@@ -1,9 +1,6 @@
 #!/usr/bin/python
 '''Read from PyMongo, make simple model and export for CoreML'''
 
-# make this work nice when support for python 3 releases
-# from __future__ import print_function # python 3 is good to go!!!
-
 # database imports
 from pymongo import MongoClient
 from pymongo.errors import ServerSelectionTimeoutError
@@ -23,9 +20,18 @@ import numpy as np
 import coremltools
 
 
-dsid = 6
+# To use the scikit-learn outputs, you need to have the following installed:
+# these can be done on an install without using Rosetta! No need to be i386
+# python3 -m pip install --upgrade pip 
+# pip3 install numpy   
+# pip3 install scikit-learn==1.1.2
+# pip3 install coremltools
+# pip3 install pymongo
+
+
+dsid = 1
 client  = MongoClient(serverSelectionTimeoutMS=50)
-db = client.sklearndatabase
+db = client.turidatabase
 
 
 # create feature/label vectors from database
@@ -58,26 +64,26 @@ coreml_model = coremltools.converters.sklearn.convert(
 	clf_rf) 
 
 # save out as a file
-coreml_model.save('RandomForestAccel.mlmodel')
+coreml_model.save('../RandomForestAccel.mlmodel')
 
 
 coreml_model = coremltools.converters.sklearn.convert(
 	clf_svm) 
 
 # save out as a file
-coreml_model.save('SVMAccel.mlmodel')
+coreml_model.save('../SVMAccel.mlmodel')
 
 coreml_model = coremltools.converters.sklearn.convert(
 	clf_pipe) 
 
 # save out as a file
-coreml_model.save('PipeAccel.mlmodel')
+coreml_model.save('../PipeAccel.mlmodel')
 
 coreml_model = coremltools.converters.sklearn.convert(
 	clf_gb) 
 
 # save out as a file
-coreml_model.save('GradientAccel.mlmodel')
+coreml_model.save('../GradientAccel.mlmodel')
  
 
 # close the mongo connection

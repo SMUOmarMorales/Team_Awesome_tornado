@@ -1,10 +1,9 @@
 #!/usr/bin/python
 '''Starts and runs the scikit learn server'''
 
-# For this to run properly, MongoDB must be running
-#    Navigate to where mongo db is installed and run
-#    something like $./mongod --dbpath "/data/db"
-#    might need to use sudo (yikes!)
+# For this to run properly, MongoDB should be running
+#    To start mongo use this: brew services start mongodb-community@6.0
+#    To stop it use this: brew services stop mongodb-community@6.0
 
 # database imports
 from pymongo import MongoClient
@@ -64,10 +63,11 @@ class Application(tornado.web.Application):
             self.db = self.client.turidatabase # database with labeledinstances, models
             
         except ServerSelectionTimeoutError as inst:
-            print('Could not initialize database connection, stopping execution')
+            print('Could not initialize database connection')
             print('Are you running a valid local-hosted instance of mongodb?')
             print('   Make sure that mongo db is installed and running')
             print('   using the "brew services start mongodb-community@6.0" command')
+
             #raise inst
         
         self.clf = [] # the classifier model (in-class assignment, you might need to change this line!)
