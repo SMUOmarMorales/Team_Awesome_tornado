@@ -15,8 +15,15 @@ conda create -n "python38env" python=3.8
 
 Instructions for all Macs: 
 Note that numpy must be an older version to be compatible with Turi ...
+You should always install new packages using the terminal that is i386/x_86. Otherwise, you can contaminate the entire environment 
 
-conda activate python38env
+Regular install:
+conda create -n "python38env" python=3.8
+
+M1/M2 Install:
+CONDA_SUBDIR=osx-64 conda create -n "python38env" python=3.8
+
+
 python3 -m pip install --upgrade pip 
 pip3 install numpy==1.23.1  
 pip3 install pandas 
@@ -26,7 +33,8 @@ pip3 install seaborn
 pip3 install jupyter 
 pip3 install coremltools
 pip3 install turicreate
-pip3 install pymongo
+pip3 install motor
+pip3 install fastapi 
 
 
 
@@ -38,5 +46,6 @@ python3 -m pip install --upgrade pip
 pip3 install numpy  
 pip3 install scikit-learn==1.1.2 
 pip3 install coremltools
-pip3 install pymongo
+pip3 install motor
+pip3 install fastapi 
 
