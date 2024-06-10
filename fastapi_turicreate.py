@@ -66,7 +66,7 @@ import numpy as np
 
 
 # define some things in API
-async def db_lifespan(app: FastAPI):
+async def custom_lifespan(app: FastAPI):
     # Motor API allows us to directly interact with a hosted MongoDB server
     # In this example, we assume that there is a single client 
     # First let's get access to the Mongo client that allows interactions locally 
@@ -88,7 +88,7 @@ async def db_lifespan(app: FastAPI):
 app = FastAPI(
     title="Machine Learning as a Service",
     summary="An application using FastAPI to add a ReST API to a MongoDB for data and labels collection.",
-    lifespan=db_lifespan,
+    lifespan=custom_lifespan,
 )
 
 
@@ -221,7 +221,6 @@ async def list_datapoints(dsid: int):
 @app.get(
     "/max_dsid/",
     response_description="Get current maximum dsid in data",
-    response_model=int,
     response_model_by_alias=False,
 )
 async def show_max_dsid():
@@ -232,7 +231,7 @@ async def show_max_dsid():
     if (
         datapoint := await app.collection.find_one(sort=[("dsid", -1)])
     ) is not None:
-        return datapoint["dsid"]
+        return {"dsid":datapoint["dsid"]}
 
     raise HTTPException(status_code=404, detail=f"No datasets currently created.")
 
