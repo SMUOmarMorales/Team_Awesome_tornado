@@ -22,7 +22,9 @@ fastapi run fastapi_turicreate.py
 External connections will use your public facing IP, which you can find from the inet. 
 A useful command to find the right public facing ip is:
 ifconfig |grep "inet "
-which will return the ip for various network interfaces from your card. 
+which will return the ip for various network interfaces from your card. If you get something like this:
+inet 10.9.181.129 netmask 0xffffc000 broadcast 10.9.191.255 
+then your app needs to connect to the netmask (the first ip), 10.9.181.129
 '''
 
 # For this to run properly, MongoDB should be running
@@ -81,6 +83,8 @@ async def custom_lifespan(app: FastAPI):
 
     yield 
 
+    # anything after the yield can be used for clean up
+
     app.mongo_client.close()
 
 
@@ -95,6 +99,14 @@ app = FastAPI(
 
 # Represents an ObjectId field in the database.
 # It will be represented as a `str` on the model so that it can be serialized to JSON.
+
+# Annotated in python allows you to declare the type of a reference 
+# and provide additional information related to it.
+#   below we are declaring a "string" type with the annotation from BeforeValidator for a string type
+#   this is the expectec setup for the pydantic Field below
+# The validator is a pydantic check using the @validation decorator
+# It specifies that it should be a strong before going into the validator
+# we are not really using any advanced functionality, though, so its just boiler plate syntax
 PyObjectId = Annotated[str, BeforeValidator(str)]
 
 

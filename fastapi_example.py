@@ -19,6 +19,9 @@ External connections will use your public facing IP, which you can find from the
 A useful command to find the right public facing ip is:
 ifconfig |grep "inet "
 which will return the ip for various network interfaces from your card. 
+which will return the ip for various network interfaces from your card. If you get something like this:
+inet 10.9.181.129 netmask 0xffffc000 broadcast 10.9.191.255 
+then your app needs to connect to the netmask (the first ip), 10.9.181.129
 '''
 
 # For this to run properly, MongoDB should be running
