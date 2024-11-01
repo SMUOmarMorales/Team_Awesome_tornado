@@ -272,18 +272,18 @@ async def update_character(name: str, character: UpdateCharacterModel = Body(...
     raise HTTPException(status_code=404, detail=f"Character {name_query} not found")
 
 
-@app.delete("/characters/{name}", response_description="Delete a character")
-async def delete_character(name: str):
-    """
-    Remove a single character record from the database.
-    """
+# @app.delete("/characters/{name}", response_description="Delete a character")
+# async def delete_character(name: str):
+#     """
+#     Remove a single character record from the database.
+#     """
 
-    # replace any underscores with spaces (to help support others)
-    name_query = name.replace("_"," ")
+#     # replace any underscores with spaces (to help support others)
+#     name_query = name.replace("_"," ")
 
-    delete_result = await character_collection.delete_one({"name": name_query})
+#     delete_result = await character_collection.delete_one({"name": name_query})
 
-    if delete_result.deleted_count == 1:
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
+#     if delete_result.deleted_count == 1:
+#         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    raise HTTPException(status_code=404, detail=f"Character {name_query} not found")
+#     raise HTTPException(status_code=404, detail=f"Character {name_query} not found")
