@@ -1,8 +1,9 @@
 #!/usr/bin/python
 '''Read from PyMongo, make simple model and export for CoreML'''
 
-# make this work nice when support for python 3 releases
-# from __future__ import print_function # python 3 is good to go!!!
+# users might be interested in the following 
+# documentation from Apple on gathering and training and app for activity detection (WWDC 2019)
+# https://wwdcnotes.com/documentation/wwdcnotes/wwdc19-426-building-activity-classification-models-in-create-ml/
 
 # database imports
 from pymongo import MongoClient
