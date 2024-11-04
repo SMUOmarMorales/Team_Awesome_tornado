@@ -5,6 +5,10 @@
 # documentation from Apple on gathering and training and app for activity detection (WWDC 2019)
 # https://wwdcnotes.com/documentation/wwdcnotes/wwdc19-426-building-activity-classification-models-in-create-ml/
 
+# this script creates a dierectory structure that CreateML can read from and make use of for 
+# acitvity classification based on our uploaded data to mongoDB. 
+# Becasue of this, you do NOT need to use python 3.8 (as we no longer depend on turi)
+
 # database imports
 from pymongo import MongoClient
 from pymongo.errors import ServerSelectionTimeoutError
