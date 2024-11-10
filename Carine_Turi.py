@@ -59,7 +59,7 @@ import motor.motor_asyncio
 from pymongo import ReturnDocument
 
 # Machine Learning, Turi and Sklearn Imports
-import turicreate as tc
+# import turicreate as tc
 from sklearn.neighbors import KNeighborsClassifier
 
 from joblib import dump, load
@@ -249,22 +249,22 @@ async def show_max_dsid():
 
 
 
-@app.delete("/labeled_data/{dsid}", 
-    response_description="Delete an entire dsid of datapoints.")
-async def delete_dataset(dsid: int):
-    """
-    Remove an entire dsid from the database.
-    REMOVE AN ENTIRE DSID FROM THE DATABASE, USE WITH CAUTION.
-    """
+# @app.delete("/labeled_data/{dsid}", 
+#     response_description="Delete an entire dsid of datapoints.")
+# async def delete_dataset(dsid: int):
+#     """
+#     Remove an entire dsid from the database.
+#     REMOVE AN ENTIRE DSID FROM THE DATABASE, USE WITH CAUTION.
+#     """
 
-    # replace any underscores with spaces (to help support others)
+#     # replace any underscores with spaces (to help support others)
 
-    delete_result = await app.collection.delete_many({"dsid": dsid})
+#     delete_result = await app.collection.delete_many({"dsid": dsid})
 
-    if delete_result.deleted_count > 0:
-        return {"num_deleted_results":delete_result.deleted_count}
+#     if delete_result.deleted_count > 0:
+#         return {"num_deleted_results":delete_result.deleted_count}
 
-    raise HTTPException(status_code=404, detail=f"DSID {dsid} not found")
+#     raise HTTPException(status_code=404, detail=f"DSID {dsid} not found")
 
 
 
@@ -274,68 +274,64 @@ async def delete_dataset(dsid: int):
 #-------------------------------------------
 # These allow us to interact with the REST server with ML from Turi. 
 
-@app.get(
-    "/train_model_turi/{dsid}",
-    response_description="Train a machine learning model for the given dsid",
-    response_model_by_alias=False,
-)
-async def train_model_turi(dsid: int):
-    """
-    Train the machine learning model using Turi
-    """
+# @app.get(
+#     "/train_model_turi/{dsid}",
+#     response_description="Train a machine learning model for the given dsid",
+#     response_model_by_alias=False,
+# )
+# async def train_model_turi(dsid: int):
+#     """
+#     Train the machine learning model using Turi
+#     """
 
-    # convert data over to a scalable dataframe
+#     # convert data over to a scalable dataframe
 
-    datapoints = await app.collection.find({"dsid": dsid}).to_list(length=None)
+#     datapoints = await app.collection.find({"dsid": dsid}).to_list(length=None)
 
-    if len(datapoints) < 2:
-        raise HTTPException(status_code=404, detail=f"DSID {dsid} has {len(datapoints)} datapoints.") 
+#     if len(datapoints) < 2:
+#         raise HTTPException(status_code=404, detail=f"DSID {dsid} has {len(datapoints)} datapoints.") 
 
-    # convert to dictionary and create SFrame
-    data = tc.SFrame(data={"target":[datapoint["label"] for datapoint in datapoints], 
-        "sequence":np.array([datapoint["feature"] for datapoint in datapoints])}
-    )
+#     # convert to dictionary and create SFrame
+#     data = tc.SFrame(data={"target":[datapoint["label"] for datapoint in datapoints], 
+#         "sequence":np.array([datapoint["feature"] for datapoint in datapoints])}
+#     )
         
-    # create a classifier model  
-    model = tc.classifier.create(data,target="target",verbose=0)# training
+#     # create a classifier model  
+#     model = tc.classifier.create(data,target="target",verbose=0)# training
     
-    # save model for use later, if desired
-    model.save("../models/turi_model_dsid%d"%(dsid))
+#     # save model for use later, if desired
+#     model.save("../models/turi_model_dsid%d"%(dsid))
 
-    # save this for use later 
-    app.clf = {}
-    if dsid not in app.clf:
-        app.clf[dsid] = model
+#     # save this for use later 
+#     app.clf = model 
 
-    return {"summary":f"KNN classifier with accuracy {acc}"}
-
-    return {"summary":f"{model}"}
+#     return {"summary":f"{model}"}
 
 
-@app.post(
-    "/predict_turi/",
-    response_description="Predict Label from Datapoint",
-)
-async def predict_datapoint_turi(datapoint: FeatureDataPoint = Body(...)):
-    """
-    Post a feature set and get the label back
+# @app.post(
+#     "/predict_turi/",
+#     response_description="Predict Label from Datapoint",
+# )
+# async def predict_datapoint_turi(datapoint: FeatureDataPoint = Body(...)):
+#     """
+#     Post a feature set and get the label back
 
-    """
+#     """
 
-    # place inside an SFrame (that has one row)
-    data = tc.SFrame(data={"sequence":np.array(datapoint.feature).reshape((1,-1))})
+#     # place inside an SFrame (that has one row)
+#     data = tc.SFrame(data={"sequence":np.array(datapoint.feature).reshape((1,-1))})
 
-    if(app.clf == []):
-        print("Loading Turi Model From file")
-        app.clf = tc.load_model("../models/turi_model_dsid%d"%(datapoint.dsid))
+#     if(app.clf == []):
+#         print("Loading Turi Model From file")
+#         app.clf = tc.load_model("../models/turi_model_dsid%d"%(datapoint.dsid))
 
-        # TODO: what happens if the user asks for a model that was never trained?
-        #       or if the user asks for a dsid without any data? 
-        #       need a graceful failure for the client...
+#         # TODO: what happens if the user asks for a model that was never trained?
+#         #       or if the user asks for a dsid without any data? 
+#         #       need a graceful failure for the client...
 
 
-    pred_label = app.clf.predict(data)
-    return {"prediction":str(pred_label)}
+#     pred_label = app.clf.predict(data)
+#     return {"prediction":str(pred_label)}
 
 
 #===========================================
@@ -374,7 +370,7 @@ async def train_model_sklearn(dsid: int):
     # just write this to model files directory
     dump(model, '../models/sklearn_model_dsid%d.joblib'%(dsid))
 
-    # save this for use later 
+     
     app.clf = {}
     if dsid not in app.clf:
         app.clf[dsid] = model
@@ -404,9 +400,12 @@ async def predict_datapoint_sklearn(datapoint: FeatureDataPoint = Body(...)):
         #       or if the user asks for a dsid without any data? 
         #       need a graceful failure for the client...
 
+    try:
+        pred_label = app.clf[dsid].predict(data)
+        return {"prediction":str(pred_label[0])}
 
-    pred_label = app.clf.predict(data)
-    return {"prediction":str(pred_label)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error during prediction: {str(e)}")
 
 
 
