@@ -288,7 +288,7 @@ async def train_model_turi(dsid: int):
     # save this for use later 
     app.clf[dsid] = model
 
-    return {"summary":f"KNN classifier with accuracy {acc}"}
+    # return {"summary":f"KNN classifier with accuracy {acc}"}
 
     return {"summary":f"{model}"}
 
