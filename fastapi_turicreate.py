@@ -79,7 +79,7 @@ async def custom_lifespan(app: FastAPI):
     db = app.mongo_client.turidatabase
     app.collection = db.get_collection("labeledinstances")
 
-    app.clf = [] # start app with no classifier
+    app.clf = {} # Start app with dictionary, empty classifier
 
     yield 
 
@@ -87,15 +87,12 @@ async def custom_lifespan(app: FastAPI):
 
     app.mongo_client.close()
 
-
 # Create the FastAPI app
 app = FastAPI(
     title="Machine Learning as a Service",
     summary="An application using FastAPI to add a ReST API to a MongoDB for data and labels collection.",
     lifespan=custom_lifespan,
 )
-
-
 
 # Represents an ObjectId field in the database.
 # It will be represented as a `str` on the model so that it can be serialized to JSON.
@@ -108,8 +105,6 @@ app = FastAPI(
 # It specifies that it should be a strong before going into the validator
 # we are not really using any advanced functionality, though, so its just boiler plate syntax
 PyObjectId = Annotated[str, BeforeValidator(str)]
-
-
 
 #========================================
 #   Data store objects from pydantic 
@@ -143,7 +138,6 @@ class LabeledDataPoint(BaseModel):
         },
     )
 
-
 class LabeledDataPointCollection(BaseModel):
     """
     A container holding a list of instances.
@@ -152,7 +146,6 @@ class LabeledDataPointCollection(BaseModel):
     """
 
     datapoints: List[LabeledDataPoint]
-
 
 class FeatureDataPoint(BaseModel):
     """
@@ -175,14 +168,11 @@ class FeatureDataPoint(BaseModel):
         },
     )
 
-
-
 #===========================================
 #   FastAPI methods, for interacting with db 
 #-------------------------------------------
 # These allow us to interact with the REST server. All interactions with mongo should be 
 # async, allowing the API to remain responsive even when servicing longer queries. 
-
 
 @app.post(
     "/labeled_data/",
@@ -214,7 +204,6 @@ async def create_datapoint(datapoint: LabeledDataPoint = Body(...)):
 
     return created_label
 
-
 @app.get(
     "/labeled_data/{dsid}",
     response_description="List all labeled data in a given dsid",
@@ -228,7 +217,6 @@ async def list_datapoints(dsid: int):
     The response is unpaginated and limited to 1000 results.
     """
     return LabeledDataPointCollection(datapoints=await app.collection.find({"dsid": dsid}).to_list(1000))
-
 
 @app.get(
     "/max_dsid/",
@@ -247,8 +235,6 @@ async def show_max_dsid():
 
     raise HTTPException(status_code=404, detail=f"No datasets currently created.")
 
-
-
 @app.delete("/labeled_data/{dsid}", 
     response_description="Delete an entire dsid of datapoints.")
 async def delete_dataset(dsid: int):
@@ -265,9 +251,6 @@ async def delete_dataset(dsid: int):
         return {"num_deleted_results":delete_result.deleted_count}
 
     raise HTTPException(status_code=404, detail=f"DSID {dsid} not found")
-
-
-
 
 #===========================================
 #   Machine Learning methods (Turi)
@@ -286,7 +269,7 @@ async def train_model_turi(dsid: int):
 
     # convert data over to a scalable dataframe
 
-    datapoints = await app.collection.find({"dsid": dsid}).to_list(length=None)
+    datapoints = await app.collection.find({"dsid": dsid}).to_list(length=None) # Call to dictionary
 
     if len(datapoints) < 2:
         raise HTTPException(status_code=404, detail=f"DSID {dsid} has {len(datapoints)} datapoints.") 
@@ -300,17 +283,14 @@ async def train_model_turi(dsid: int):
     model = tc.classifier.create(data,target="target",verbose=0)# training
     
     # save model for use later, if desired
-    model.save("../models/turi_model_dsid%d"%(dsid))
+    model.save(f"../models/turi_model_dsid{dsid}") #Save model by DSID
 
     # save this for use later 
-    app.clf = {}
-    if dsid not in app.clf:
-        app.clf[dsid] = model
+    app.clf[dsid] = model
 
     return {"summary":f"KNN classifier with accuracy {acc}"}
 
     return {"summary":f"{model}"}
-
 
 @app.post(
     "/predict_turi/",
@@ -325,18 +305,25 @@ async def predict_datapoint_turi(datapoint: FeatureDataPoint = Body(...)):
     # place inside an SFrame (that has one row)
     data = tc.SFrame(data={"sequence":np.array(datapoint.feature).reshape((1,-1))})
 
-    if(app.clf == []):
-        print("Loading Turi Model From file")
-        app.clf = tc.load_model("../models/turi_model_dsid%d"%(datapoint.dsid))
+    # if(app.clf == []):
+    #     print("Loading Turi Model From file")
+    #     app.clf = tc.load_model("../models/turi_model_dsid%d"%(datapoint.dsid))
 
-        # TODO: what happens if the user asks for a model that was never trained?
-        #       or if the user asks for a dsid without any data? 
-        #       need a graceful failure for the client...
+    #     # TODO: what happens if the user asks for a model that was never trained?
+    #     #       or if the user asks for a dsid without any data? 
+    #     #       need a graceful failure for the client...
+    
+    if datapoint.dsid not in app.clf:
+        try:
+            # Attempt to load the model from a saved file if it exists
+            app.clf[datapoint.dsid] = tc.load_model(f"../models/turi_model_dsid{datapoint.dsid}")
+        except FileNotFoundError:
+            # Return an error if the model is not found
+            raise HTTPException(status_code=404, detail=f"Model for DSID {datapoint.dsid} not found. Please train the model first.")
 
 
-    pred_label = app.clf.predict(data)
+    pred_label = app.clf[datapoint.dsid].predict(data)
     return {"prediction":str(pred_label)}
-
 
 #===========================================
 #   Machine Learning methods (Scikit-learn)
