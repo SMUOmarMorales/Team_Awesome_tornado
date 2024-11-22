@@ -77,15 +77,14 @@ async def custom_lifespan(app: FastAPI):
     
     app.mongo_client = motor.motor_asyncio.AsyncIOMotorClient(uri)  # Update with your MongoDB URI
 
-    # Send a ping to confirm a successful connection
+    # Testing connection
     try:
         app.mongo_client.admin.command('ping')
         print("Pinged your deployment. You successfully connected to MongoDB!")
     except Exception as e:
         print(e)
 
-    # new we need to create a database and a collection. These will create the db and the 
-    # collection if they haven't been created yet. They are stored upon the first insert. 
+    # connect to our databse
 
     db = app.mongo_client.turiDatabase
     app.collection = db.get_collection("labeledinstances")
