@@ -46,10 +46,11 @@ from typing import Optional, List
 from enum import Enum
 
 # FastAPI imports
-from fastapi import FastAPI, Body, HTTPException, status
+from fastapi import FastAPI, Body, HTTPException, status, File, UploadFile
 from fastapi.responses import Response
 from pydantic import ConfigDict, BaseModel, Field, EmailStr
 from pydantic.functional_validators import BeforeValidator
+import base64
 
 from typing_extensions import Annotated
 
@@ -72,22 +73,20 @@ async def custom_lifespan(app: FastAPI):
     # Motor API allows us to directly interact with a hosted MongoDB server
     # In this example, we assume that there is a single client 
     # First let's get access to the Mongo client that allows interactions locally 
-
-    uri = "mongodb+srv://omarcastelan:seFEZm1yn2EsKGyZ@smu8392coylef2024.l1ff5.mongodb.net/?retryWrites=true&w=majority&appName=SMU8392CoyleF2024"
     
-    app.mongo_client = motor.motor_asyncio.AsyncIOMotorClient(uri)  # Update with your MongoDB URI
+    app.mongo_client = motor.motor_asyncio.AsyncIOMotorClient()  # Update with your MongoDB URI
 
-    # Testing connection
-    try:
-        app.mongo_client.admin.command('ping')
-        print("Pinged your deployment. You successfully connected to MongoDB!")
-    except Exception as e:
-        print(e)
+    # # Testing connection
+    # try:
+    #     app.mongo_client.admin.command('ping')
+    #     print("Pinged your deployment. You successfully connected to MongoDB!")
+    # except Exception as e:
+    #     print(e)
 
     # connect to our databse
 
     db = app.mongo_client.turiDatabase
-    app.collection = db.get_collection("labeledinstances")
+    app.collection = db.get_collection("test_images")
 
     app.clf = {} # Start app with dictionary, empty classifier
 
