@@ -72,11 +72,22 @@ async def custom_lifespan(app: FastAPI):
     # Motor API allows us to directly interact with a hosted MongoDB server
     # In this example, we assume that there is a single client 
     # First let's get access to the Mongo client that allows interactions locally 
-    app.mongo_client = motor.motor_asyncio.AsyncIOMotorClient()
+
+    uri = "mongodb+srv://omarcastelan:seFEZm1yn2EsKGyZ@smu8392coylef2024.l1ff5.mongodb.net/?retryWrites=true&w=majority&appName=SMU8392CoyleF2024"
+    
+    app.mongo_client = motor.motor_asyncio.AsyncIOMotorClient(uri)  # Update with your MongoDB URI
+
+    # Send a ping to confirm a successful connection
+    try:
+        app.mongo_client.admin.command('ping')
+        print("Pinged your deployment. You successfully connected to MongoDB!")
+    except Exception as e:
+        print(e)
 
     # new we need to create a database and a collection. These will create the db and the 
     # collection if they haven't been created yet. They are stored upon the first insert. 
-    db = app.mongo_client.turidatabase
+
+    db = app.mongo_client.turiDatabase
     app.collection = db.get_collection("labeledinstances")
 
     app.clf = {} # Start app with dictionary, empty classifier
@@ -324,76 +335,3 @@ async def predict_datapoint_turi(datapoint: FeatureDataPoint = Body(...)):
 
     pred_label = app.clf[datapoint.dsid].predict(data)
     return {"prediction":str(pred_label)}
-
-#===========================================
-#   Machine Learning methods (Scikit-learn)
-#-------------------------------------------
-# These allow us to interact with the REST server with ML from Turi. 
-
-@app.get(
-    "/train_model_sklearn/{dsid}",
-    response_description="Train a machine learning model for the given dsid",
-    response_model_by_alias=False,
-)
-async def train_model_sklearn(dsid: int):
-    """
-    Train the machine learning model using Scikit-learn
-    """
-
-    # convert data over to a scalable dataframe
-
-    datapoints = await app.collection.find({"dsid": dsid}).to_list(length=None)
-
-    if len(datapoints) < 2:
-        raise HTTPException(status_code=404, detail=f"DSID {dsid} has {len(datapoints)} datapoints.") 
-
-    # convert to dictionary and create SFrame
-    labels = [datapoint["label"] for datapoint in datapoints] 
-    features = [datapoint["feature"] for datapoint in datapoints]
-        
-    # create a classifier model  
-    model = KNeighborsClassifier(n_neighbors=1)
-
-    model.fit(features,labels) # training
-    yhat = model.predict(features)
-    acc = sum(yhat==labels)/float(len(labels))
-
-    # just write this to model files directory
-    dump(model, '../models/sklearn_model_dsid%d.joblib'%(dsid))
-
-    # save this for use later 
-    app.clf = {}
-    if dsid not in app.clf:
-        app.clf[dsid] = model
-
-    return {"summary":f"KNN classifier with accuracy {acc}"}
-
-
-@app.post(
-    "/predict_sklearn/",
-    response_description="Predict Label from Datapoint",
-)
-async def predict_datapoint_sklearn(datapoint: FeatureDataPoint = Body(...)):
-    """
-    Post a feature set and get the label back
-
-    """
-
-    # place inside an SFrame (that has one row)
-    data = np.array(datapoint.feature).reshape((1,-1))
-
-    if(app.clf == {}):
-        print("Loading Sklearn Model From file")
-        tmp = load('../models/sklearn_model_dsid%d.joblib'%(dsid)) 
-        app.clf = pickle.loads(tmp['model'])
-
-        # TODO: what happens if the user asks for a model that was never trained?
-        #       or if the user asks for a dsid without any data? 
-        #       need a graceful failure for the client...
-
-
-    pred_label = app.clf.predict(data)
-    return {"prediction":str(pred_label)}
-
-
-
