@@ -188,7 +188,6 @@ class ImageMetadata(BaseModel):
     content_type: str = Field(..., description="Content type of the image (e.g., image/png)")
     dsid: int = Field(..., description="Dataset ID to categorize images")
 
-
 #===========================================
 #   FastAPI methods, for interacting with db 
 #-------------------------------------------
@@ -214,7 +213,7 @@ async def upload_image(file: UploadFile = File(...), dsid: int = 0):
         "filename": file.filename,
         "content_type": file.content_type,
         "image_data": Binary(file_bytes),  # BSON Binary for storing file bytes
-        "dsid": dsid,  # New field
+        "dsid": dsid,  # DSID
     }
 
     # Insert the document into the collection
@@ -252,7 +251,7 @@ async def upload_image(file: UploadFile = File(...), dsid: int = 0):
         content_type=file.content_type,
     )
 
-# Endpoint to retrieve an image by ID
+# Endpoint to retrieve an image by image ID
 @app.get(
     "/images/{image_id}",
     response_description="Retrieve an image from MongoDB by its ID",
@@ -300,11 +299,13 @@ async def list_images(dsid: Optional[int] = None):
         raise HTTPException(status_code=404, detail="No images found")
 
     return [ImageMetadata(**img) for img in images]
+
+#Count the number of images by DSID
 @app.get(
     "/count_images/",
     response_description="Get the total number of images stored",
 )
-async def count_images():
+async def count_images(dsid: int):
     """
     Count the total number of images stored in the database, optionally filtered by `dsid`.
     """
@@ -312,83 +313,39 @@ async def count_images():
     count = await app.collection.count_documents(query)
     return {"total_images": count}
 
-# @app.post(
-#     "/labeled_data/",
-#     response_description="Add new labeled datapoint",
-#     response_model=LabeledDataPoint,
-#     status_code=status.HTTP_201_CREATED,
-#     response_model_by_alias=False,
-# )
-# async def create_datapoint(datapoint: LabeledDataPoint = Body(...)):
-#     """
-#     Insert a new data point. Let user know the range of values inserted
+@app.get(
+    "/max_dsid/",
+    response_description="Get current maximum dsid in data",
+    response_model_by_alias=False,
+)
+async def show_max_dsid():
+    """
+    Get the maximum dsid currently used 
+    """
 
-#     A unique `id` will be created and provided in the response.
-#     """
-    
-#     # insert this datapoint into the database
-#     new_label = await app.collection.insert_one(
-#         datapoint.model_dump(by_alias=True, exclude=["id"])
-#     )
+    if (
+        datapoint := await app.collection.find_one(sort=[("dsid", -1)])
+    ) is not None:
+        return {"dsid":datapoint["dsid"]}
 
-#     # send back info about the record
-#     created_label = await app.collection.find_one(
-#         {"_id": new_label.inserted_id}
-#     )
-#     # also min/max of array, rather than the entire to array to save some bandwidth
-#     # the datapoint variable is a pydantic model, so we can access with properties
-#     # but the output of mongo is a dictionary, so we need to subscript the entry
-#     created_label["feature"] = [min(datapoint.feature), max(datapoint.feature)]
+    raise HTTPException(status_code=404, detail=f"No datasets currently created.")
 
-#     return created_label
+@app.delete("/labeled_data/{dsid}", 
+    response_description="Delete an entire dsid of datapoints.")
+async def delete_dataset(dsid: int):
+    """
+    Remove an entire dsid from the database.
+    REMOVE AN ENTIRE DSID FROM THE DATABASE, USE WITH CAUTION.
+    """
 
-# @app.get(
-#     "/labeled_data/{dsid}",
-#     response_description="List all labeled data in a given dsid",
-#     response_model=LabeledDataPointCollection,
-#     response_model_by_alias=False,
-# )
-# async def list_datapoints(dsid: int):
-#     """
-#     List all of the data for a given dsid in the database.
+    # replace any underscores with spaces (to help support others)
 
-#     The response is unpaginated and limited to 1000 results.
-#     """
-#     return LabeledDataPointCollection(datapoints=await app.collection.find({"dsid": dsid}).to_list(1000))
+    delete_result = await app.collection.delete_many({"dsid": dsid})
 
-# @app.get(
-#     "/max_dsid/",
-#     response_description="Get current maximum dsid in data",
-#     response_model_by_alias=False,
-# )
-# async def show_max_dsid():
-#     """
-#     Get the maximum dsid currently used 
-#     """
+    if delete_result.deleted_count > 0:
+        return {"num_deleted_results":delete_result.deleted_count}
 
-#     if (
-#         datapoint := await app.collection.find_one(sort=[("dsid", -1)])
-#     ) is not None:
-#         return {"dsid":datapoint["dsid"]}
-
-#     raise HTTPException(status_code=404, detail=f"No datasets currently created.")
-
-# @app.delete("/labeled_data/{dsid}", 
-#     response_description="Delete an entire dsid of datapoints.")
-# async def delete_dataset(dsid: int):
-#     """
-#     Remove an entire dsid from the database.
-#     REMOVE AN ENTIRE DSID FROM THE DATABASE, USE WITH CAUTION.
-#     """
-
-#     # replace any underscores with spaces (to help support others)
-
-#     delete_result = await app.collection.delete_many({"dsid": dsid})
-
-#     if delete_result.deleted_count > 0:
-#         return {"num_deleted_results":delete_result.deleted_count}
-
-#     raise HTTPException(status_code=404, detail=f"DSID {dsid} not found")
+    raise HTTPException(status_code=404, detail=f"DSID {dsid} not found")
 
 # #===========================================
 # #   Machine Learning methods (Turi)
@@ -430,35 +387,35 @@ async def count_images():
 
 #     return {"summary":f"{model}"}
 
-# @app.post(
-#     "/predict_turi/",
-#     response_description="Predict Label from Datapoint",
-# )
-# async def predict_datapoint_turi(datapoint: FeatureDataPoint = Body(...)):
-#     """
-#     Post a feature set and get the label back
+@app.post(
+    "/predict_turi/",
+    response_description="Predict Label from Datapoint",
+)
+async def predict_datapoint_turi(datapoint: FeatureDataPoint = Body(...)):
+    """
+    Post a feature set and get the label back
 
-#     """
+    """
 
-#     # place inside an SFrame (that has one row)
-#     data = tc.SFrame(data={"sequence":np.array(datapoint.feature).reshape((1,-1))})
+    # place inside an SFrame (that has one row)
+    data = tc.SFrame(data={"sequence":np.array(datapoint.feature).reshape((1,-1))})
 
-#     # if(app.clf == []):
-#     #     print("Loading Turi Model From file")
-#     #     app.clf = tc.load_model("../models/turi_model_dsid%d"%(datapoint.dsid))
+    # if(app.clf == []):
+    #     print("Loading Turi Model From file")
+    #     app.clf = tc.load_model("../models/turi_model_dsid%d"%(datapoint.dsid))
 
-#     #     # TODO: what happens if the user asks for a model that was never trained?
-#     #     #       or if the user asks for a dsid without any data? 
-#     #     #       need a graceful failure for the client...
+    #     # TODO: what happens if the user asks for a model that was never trained?
+    #     #       or if the user asks for a dsid without any data? 
+    #     #       need a graceful failure for the client...
     
-#     if datapoint.dsid not in app.clf:
-#         try:
-#             # Attempt to load the model from a saved file if it exists
-#             app.clf[datapoint.dsid] = tc.load_model(f"../models/turi_model_dsid{datapoint.dsid}")
-#         except FileNotFoundError:
-#             # Return an error if the model is not found
-#             raise HTTPException(status_code=404, detail=f"Model for DSID {datapoint.dsid} not found. Please train the model first.")
+    if datapoint.dsid not in app.clf:
+        try:
+            # Attempt to load the model from a saved file if it exists
+            app.clf[datapoint.dsid] = tc.load_model(f"../models/turi_model_dsid{datapoint.dsid}")
+        except FileNotFoundError:
+            # Return an error if the model is not found
+            raise HTTPException(status_code=404, detail=f"Model for DSID {datapoint.dsid} not found. Please train the model first.")
 
 
-#     pred_label = app.clf[datapoint.dsid].predict(data)
-#     return {"prediction":str(pred_label)}
+    pred_label = app.clf[datapoint.dsid].predict(data)
+    return {"prediction":str(pred_label)}
