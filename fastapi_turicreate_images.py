@@ -186,6 +186,7 @@ class ImageMetadata(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     filename: str = Field(..., description="Name of the image file")
     content_type: str = Field(..., description="Content type of the image (e.g., image/png)")
+    dsid: int = Field(..., description="Dataset ID to categorize images")
 
 
 #===========================================
@@ -201,7 +202,31 @@ class ImageMetadata(BaseModel):
     response_model=ImageMetadata,
     status_code=status.HTTP_201_CREATED,
 )
-async def upload_image(file: UploadFile = File(...)):
+async def upload_image(file: UploadFile = File(...), dsid: int = 0):
+    """
+    Upload an image to the MongoDB database with a specified dataset ID.
+    """
+    # Read the image file as bytes
+    file_bytes = await file.read()
+
+    # Create the document with binary data, metadata, and dataset ID
+    image_document = {
+        "filename": file.filename,
+        "content_type": file.content_type,
+        "image_data": Binary(file_bytes),  # BSON Binary for storing file bytes
+        "dsid": dsid,  # New field
+    }
+
+    # Insert the document into the collection
+    result = await app.collection.insert_one(image_document)
+
+    # Respond with the inserted metadata
+    return ImageMetadata(
+        id=str(result.inserted_id),
+        filename=file.filename,
+        content_type=file.content_type,
+        dsid=dsid,
+    )
     """
     Upload an image to the MongoDB database.
 
@@ -261,15 +286,31 @@ async def get_image(image_id: str):
 # Endpoint to list all stored images (metadata only)
 @app.get(
     "/list_images/",
-    response_description="List all image metadata",
-    response_model=List[ImageMetadata], # updated for python 3.8
+    response_description="List all image metadata or filter by dsid",
+    response_model=List[ImageMetadata],
 )
-async def list_images():
+async def list_images(dsid: Optional[int] = None):
     """
-    List all images stored in the database (metadata only).
+    List all images stored in the database (metadata only) or filter by `dsid`.
     """
-    images = await app.collection.find({}, {"image_data": 0}).to_list(100)
+    query = {"dsid": dsid} if dsid is not None else {}
+    images = await app.collection.find(query, {"image_data": 0}).to_list(100)
+
+    if not images:
+        raise HTTPException(status_code=404, detail="No images found")
+
     return [ImageMetadata(**img) for img in images]
+@app.get(
+    "/count_images/",
+    response_description="Get the total number of images stored",
+)
+async def count_images():
+    """
+    Count the total number of images stored in the database, optionally filtered by `dsid`.
+    """
+    query = {"dsid": dsid} if dsid is not None else {}
+    count = await app.collection.count_documents(query)
+    return {"total_images": count}
 
 # @app.post(
 #     "/labeled_data/",
