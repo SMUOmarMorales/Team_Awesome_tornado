@@ -52,6 +52,7 @@ from pydantic import ConfigDict, BaseModel, Field, EmailStr
 from pydantic.functional_validators import BeforeValidator
 from bson import ObjectId, Binary
 import base64
+from typing import List  # Import List from typing for older Python versions
 
 from typing_extensions import Annotated
 
@@ -257,18 +258,18 @@ async def get_image(image_id: str):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid ID format: {e}")
 
-# # Endpoint to list all stored images (metadata only)
-# @app.get(
-#     "/list_images/",
-#     response_description="List all image metadata",
-#     response_model=list[ImageMetadata],
-# )
-# async def list_images():
-#     """
-#     List all images stored in the database (metadata only).
-#     """
-#     images = await app.collection.find({}, {"image_data": 0}).to_list(100)
-#     return [ImageMetadata(**img) for img in images]
+# Endpoint to list all stored images (metadata only)
+@app.get(
+    "/list_images/",
+    response_description="List all image metadata",
+    response_model=List[ImageMetadata], # updated for python 3.8
+)
+async def list_images():
+    """
+    List all images stored in the database (metadata only).
+    """
+    images = await app.collection.find({}, {"image_data": 0}).to_list(100)
+    return [ImageMetadata(**img) for img in images]
 
 # @app.post(
 #     "/labeled_data/",
