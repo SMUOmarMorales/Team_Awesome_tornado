@@ -85,12 +85,26 @@ async def custom_lifespan(app: FastAPI):
 
     # connect to our databse
 
+
+    uri = "mongodb+srv://omarcastelan:seFEZm1yn2EsKGyZ@smu8392coylef2024.l1ff5.mongodb.net/?retryWrites=true&w=majority&appName=SMU8392CoyleF2024"
+    
+    app.mongo_client = motor.motor_asyncio.AsyncIOMotorClient(uri)  # Update with your MongoDB URI
+
+    # Testing connection
+    try:
+        app.mongo_client.admin.command('ping')
+        print("Pinged your deployment. You successfully connected to MongoDB!")
+    except Exception as e:
+        print(e)
+
+
+
     db = app.mongo_client.turiDatabase
-    app.collection = db.get_collection("test_images")
+    app.collection = db.get_collection("carine_celery_test_dev")
 
     app.clf = {} # Start app with dictionary, empty classifier
-
-    yield 
+    
+    yield
 
     # anything after the yield can be used for clean up
 
