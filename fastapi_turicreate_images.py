@@ -194,7 +194,41 @@ class ImageMetadata(BaseModel):
 # These allow us to interact with the REST server. All interactions with mongo should be 
 # async, allowing the API to remain responsive even when servicing longer queries. 
 
-# Upload image
+# Upload image FROM phone
+@app.post("/upload_image_phone/")   # Fully derived from ChatGPT
+async def upload_image(
+        data: dict = Body(...,
+                          example={"feature": "<base64_image_data>",
+                                   "label": "some_label", "dsid": 5})
+):
+    """
+    Accept base64 image data and metadata.
+    """
+    try:
+        # Decode the base64 image
+        image_data = base64.b64decode(data["feature"])
+
+        # Create the document with binary data and metadata
+        image_document = {
+            "filename": "uploaded_image.jpg",
+            "content_type": "image/jpeg",
+            "image_data": Binary(image_data),
+            # BSON Binary for storing file bytes
+            "label": data["label"],
+            "dsid": data["dsid"]
+        }
+
+        # Insert the document into the collection
+        result = await app.collection.insert_one(image_document)
+
+        return {"message": "Image uploaded successfully",
+                "id": str(result.inserted_id)}
+    except Exception as e:
+        raise HTTPException(status_code=400,
+                            detail=f"Error processing image: {e}")
+
+
+# Upload image (for model training)
 @app.post(
     "/upload_image/",
     response_description="Upload an image to MongoDB",
