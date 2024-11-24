@@ -43,7 +43,6 @@ import turicreate as tc
 # import pickle
 import numpy as np
 
-
 # define some things in API
 async def custom_lifespan(app: FastAPI):
     # Motor API allows us to directly interact with a hosted MongoDB server
@@ -64,7 +63,7 @@ async def custom_lifespan(app: FastAPI):
     # connect to our databse
 
     db = app.mongo_client.turiDatabase
-    app.collection = db.get_collection("turicreate_images")
+    app.collection = db.get_collection("turi_train_model_dev")
 
     app.clf = {} # Start app with dictionary, empty classifier
 
@@ -84,13 +83,6 @@ app = FastAPI(
 # Represents an ObjectId field in the database.
 # It will be represented as a `str` on the model so that it can be serialized to JSON.
 
-# Annotated in python allows you to declare the type of a reference 
-# and provide additional information related to it.
-#   below we are declaring a "string" type with the annotation from BeforeValidator for a string type
-#   this is the expectec setup for the pydantic Field below
-# The validator is a pydantic check using the @validation decorator
-# It specifies that it should be a strong before going into the validator
-# we are not really using any advanced functionality, though, so its just boiler plate syntax
 PyObjectId = Annotated[str, BeforeValidator(str)]
 
 #========================================
@@ -100,14 +92,59 @@ PyObjectId = Annotated[str, BeforeValidator(str)]
 # That might seem odd for a document DB, but its not! Mongo works faster when objects
 # have a similar schema. 
 
-# Pydantic Model for Image Metadata
-class ImageMetadata(BaseModel):
+'''Create the data model and use strong typing. This also helps with the use of intellisense.
+'''
+
+# Pydantic Model for Image Metadata BASE MODEL
+class Labeled_ImageMetadata(BaseModel):
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    filename: str = Field(..., description="Name of the image file")
+    label: str = Field(..., description="Label for predictive model")
+    content_type: str = Field(..., description="Content type of the image (e.g., image/png)")
+    dsid: int = Field(..., description="Dataset ID to categorize images")
+    # model_config = ConfigDict(
+    # populate_by_name=True,
+    # arbitrary_types_allowed=True,
+    # json_schema_extra={ # provide an example for FastAPI to show users
+    #     "example": {
+    #         "feature": [-0.6,4.1,5.0,6.0],
+    #         "label": "Walking",
+    #         "dsid": 2,
+    #     }
+    # },
+    # )
+    
+class LabeledDataPointCollection(BaseModel):
+    """
+    A container holding a list of instances.
+
+    This exists because providing a top-level array in a JSON response can be a [vulnerability](https://haacked.com/archive/2009/06/25/json-hijacking.aspx/)
+    """
+
+    datapoints: List[Labeled_ImageMetadata]
+    
+class FeatureDataPoint(BaseModel):
+    """
+    Container for a single labeled data point.
+    """
+
+    # This will be aliased to `_id` when sent to MongoDB,
+    # but provided as `id` in the API requests and responses.
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     filename: str = Field(..., description="Name of the image file")
     content_type: str = Field(..., description="Content type of the image (e.g., image/png)")
     dsid: int = Field(..., description="Dataset ID to categorize images")
-    # label: "Walking"
-    
+    # model_config = ConfigDict(
+    # populate_by_name=True,
+    # arbitrary_types_allowed=True,
+    # json_schema_extra={ # provide an example for FastAPI to show users
+    #     "example": {
+    #         "feature": [-0.6,4.1,5.0,6.0],
+    #         "label": "Walking",
+    #         "dsid": 2,
+    #     }
+    # },
+    # )
 
 #===========================================
 #   FastAPI methods, for interacting with db 
@@ -149,14 +186,14 @@ async def upload_image(
                             detail=f"Error processing image: {e}")
 
 
-# Upload image (for model training)
+# Upload image using the web API, for DEV/UAT purpose
 @app.post(
-    "/upload_image/",
-    response_description="Upload an image to MongoDB",
-    response_model=ImageMetadata,
+    "/upload_image_dev/",
+    response_description="Upload an image from the server API point",
+    response_model=Labeled_ImageMetadata,
     status_code=status.HTTP_201_CREATED,
 )
-async def upload_image(file: UploadFile = File(...), dsid: int = 0):
+async def upload_image(file: UploadFile = File(...), dsid: int = 0, label = "dog"):
     """
     Upload an image to the MongoDB database with a specified dataset ID.
     """
@@ -167,18 +204,20 @@ async def upload_image(file: UploadFile = File(...), dsid: int = 0):
     image_document = {
         "filename": file.filename,
         "content_type": file.content_type,
+        "label": label.lower(), # Ensure label is included
         "image_data": Binary(file_bytes),  # BSON Binary for storing file bytes
-        "dsid": dsid,  # DSID
+        "dsid": dsid,  # Dataset ID
     }
 
     # Insert the document into the collection
     result = await app.collection.insert_one(image_document)
 
     # Respond with the inserted metadata
-    return ImageMetadata(
+    return Labeled_ImageMetadata(
         id=str(result.inserted_id),
         filename=file.filename,
         content_type=file.content_type,
+        label = label.lower(),
         dsid=dsid,
     )
     """
@@ -200,7 +239,7 @@ async def upload_image(file: UploadFile = File(...), dsid: int = 0):
     result = await app.collection.insert_one(image_document)
 
     # Respond with the inserted metadata
-    return ImageMetadata(
+    return Labeled_ImageMetadata(
         id=str(result.inserted_id),
         filename=file.filename,
         content_type=file.content_type,
@@ -241,9 +280,9 @@ async def get_image(image_id: str):
 @app.get(
     "/list_images/",
     response_description="List all image metadata or filter by dsid",
-    response_model=List[ImageMetadata],
+    response_model=List[Labeled_ImageMetadata],
 )
-async def list_images(dsid: Optional[int] = None):
+async def list_images(dsid: Optional[int] = 0):
     """
     List all images stored in the database (metadata only) or filter by `dsid`.
     """
@@ -253,153 +292,107 @@ async def list_images(dsid: Optional[int] = None):
     if not images:
         raise HTTPException(status_code=404, detail="No images found")
 
-    return [ImageMetadata(**img) for img in images]
+    return [Labeled_ImageMetadata(**img) for img in images]
+
+#===========================================
+#   Machine Learning methods (Turi)
+#-------------------------------------------
+# These allow us to interact with the REST server with ML from Turi. 
+
+# testing DEV MODE
+import turicreate as tc
+from bson import BSON
+
+# Load BSON file and convert to an SFrame
+def load_bson_to_sframe(bson_file):
+    with open(bson_file, "rb") as f:
+        bson_data = BSON(f.read()).decode()
+    
+    # Assuming bson_data is a list of records with 'image' and 'label' fields
+    image_data = [tc.Image(record['image']) for record in bson_data]
+    labels = [record['label'] for record in bson_data]
+    return tc.SFrame({"image": image_data, "label": labels})
+
+# Example usage
+data_sframe = load_bson_to_sframe("train_data.bson")
+
+# Train the image classifier
+model = tc.image_classifier.create(data_sframe, target="label")
+
+    # save model for use later, if desired
+model.save(f"../models/turi__image_model_dsid{dsid}") #Save model by DSID
+
+
+app.post(
+    "/predict_turi/",
+    response_description="Predict Label from Image",
+)
+async def predict_image_turi(datapoint: FeatureDataPoint = Body(...)):
+    """
+    Post an image and get the label back.
+    """
+
+    try:
+        # Deserialize BSON image data and load as an SFrame
+        bson_image = BSON(datapoint.feature).decode()  # Decode BSON
+        image_data = bson_image.get("image")  # Ensure the image field is extracted
+
+        # Create an SFrame with the image (convert image bytes to an image object)
+        data = tc.SFrame({"image": [tc.Image(image_data)]})
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error processing image data: {e}")
+
+    # Load the model if it's not already in memory
+    if datapoint.dsid not in app.clf:
+        try:
+            # Attempt to load the model from a saved file if it exists
+            model_path = f"../models/turi_image_model_dsid{datapoint.dsid}"
+            app.clf[datapoint.dsid] = tc.load_model(model_path)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail=f"Model for DSID {datapoint.dsid} not found. Please train the model first.")
+
+    # Perform prediction using the model
+    try:
+        pred_label = app.clf[datapoint.dsid].predict(data)
+        return {"prediction": str(pred_label[0])}  # Return the first prediction
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction error: {e}")
+
+
+
+## Additional methods
+
+
 
 #Count the number of images by DSID
-@app.get(
-    "/count_images/",
-    response_description="Get the total number of images stored",
-)
-async def count_images(dsid: int):
-    """
-    Count the total number of images stored in the database, optionally filtered by `dsid`.
-    """
-    query = {"dsid": dsid} if dsid is not None else {}
-    count = await app.collection.count_documents(query)
-    return {"total_images": count}
-
-@app.get(
-    "/max_dsid/",
-    response_description="Get current maximum dsid in data",
-    response_model_by_alias=False,
-)
-async def show_max_dsid():
-    """
-    Get the maximum dsid currently used 
-    """
-
-    if (
-        datapoint := await app.collection.find_one(sort=[("dsid", -1)])
-    ) is not None:
-        return {"dsid":datapoint["dsid"]}
-
-    raise HTTPException(status_code=404, detail=f"No datasets currently created.")
-
-@app.delete("/labeled_data/{dsid}", 
-    response_description="Delete an entire dsid of datapoints.")
-async def delete_dataset(dsid: int):
-    """
-    Remove an entire dsid from the database.
-    REMOVE AN ENTIRE DSID FROM THE DATABASE, USE WITH CAUTION.
-    """
-
-    # replace any underscores with spaces (to help support others)
-
-    delete_result = await app.collection.delete_many({"dsid": dsid})
-
-    if delete_result.deleted_count > 0:
-        return {"num_deleted_results":delete_result.deleted_count}
-
-    raise HTTPException(status_code=404, detail=f"DSID {dsid} not found")
-
-# #===========================================
-# #   Machine Learning methods (Turi)
-# #-------------------------------------------
-# # These allow us to interact with the REST server with ML from Turi. 
+# @app.get(
+#     "/count_images/",
+#     response_description="Get the total number of images stored",
+# )
+# async def count_images(dsid: int):
+#     """
+#     Count the total number of images stored in the database, optionally filtered by `dsid`.
+#     """
+#     query = {"dsid": dsid} if dsid is not None else {}
+#     count = await app.collection.count_documents(query)
+#     return {"total_images": count}
 
 # @app.get(
-#     "/train_model_turi/{dsid}",
-#     response_description="Train a machine learning model for the given dsid",
+#     "/max_dsid/",
+#     response_description="Get current maximum dsid in data",
 #     response_model_by_alias=False,
 # )
-# async def train_model_turi(dsid: int):
+# async def show_max_dsid():
 #     """
-#     Train the machine learning model using Turi
-#     """
-
-#     # convert data over to a scalable dataframe
-
-#     datapoints = await app.collection.find({"dsid": dsid}).to_list(length=None) # Call to dictionary
-
-#     if len(datapoints) < 2:
-#         raise HTTPException(status_code=404, detail=f"DSID {dsid} has {len(datapoints)} datapoints.") 
-
-#     # convert to dictionary and create SFrame
-#     data = tc.SFrame(data={"target":[datapoint["label"] for datapoint in datapoints], 
-#         "sequence":np.array([datapoint["feature"] for datapoint in datapoints])}
-#     )
-        
-#     # create a classifier model  
-#     model = tc.classifier.create(data,target="target",verbose=0)# training
-    
-#     # save model for use later, if desired
-#     model.save(f"../models/turi_model_dsid{dsid}") #Save model by DSID
-
-#     # save this for use later 
-#     app.clf[dsid] = model
-
-#     # return {"summary":f"KNN classifier with accuracy {acc}"}
-
-#     return {"summary":f"{model}"}
-
-
-
-
-## testing
-# import turicreate as tc
-# from bson import BSON
-
-# # Load BSON file and convert to an SFrame
-# def load_bson_to_sframe(bson_file):
-#     with open(bson_file, "rb") as f:
-#         bson_data = BSON(f.read()).decode()
-    
-#     # Assuming bson_data is a list of records with 'image' and 'label' fields
-#     image_data = [tc.Image(record['image']) for record in bson_data]
-#     labels = [record['label'] for record in bson_data]
-#     return tc.SFrame({"image": image_data, "label": labels})
-
-# # Example usage
-# data_sframe = load_bson_to_sframe("train_data.bson")
-
-# # Train the image classifier
-# model = tc.image_classifier.create(data_sframe, target="label")
-
-#     # save model for use later, if desired
-# model.save(f"../models/turi__image_model_dsid{dsid}") #Save model by DSID
-
-
-# app.post(
-#     "/predict_turi/",
-#     response_description="Predict Label from Image",
-# )
-# async def predict_image_turi(datapoint: FeatureDataPoint = Body(...)):
-#     """
-#     Post an image and get the label back.
+#     Get the maximum dsid currently used 
 #     """
 
-#     try:
-#         # Deserialize BSON image data and load as an SFrame
-#         bson_image = BSON(datapoint.feature).decode()  # Decode BSON
-#         image_data = bson_image.get("image")  # Ensure the image field is extracted
+#     if (
+#         datapoint := await app.collection.find_one(sort=[("dsid", -1)])
+#     ) is not None:
+#         return {"dsid":datapoint["dsid"]}
 
-#         # Create an SFrame with the image (convert image bytes to an image object)
-#         data = tc.SFrame({"image": [tc.Image(image_data)]})
-#     except Exception as e:
-#         raise HTTPException(status_code=400, detail=f"Error processing image data: {e}")
+#     raise HTTPException(status_code=404, detail=f"No datasets currently created.")
 
-#     # Load the model if it's not already in memory
-#     if datapoint.dsid not in app.clf:
-#         try:
-#             # Attempt to load the model from a saved file if it exists
-#             model_path = f"../models/turi_image_model_dsid{datapoint.dsid}"
-#             app.clf[datapoint.dsid] = tc.load_model(model_path)
-#         except FileNotFoundError:
-#             raise HTTPException(status_code=404, detail=f"Model for DSID {datapoint.dsid} not found. Please train the model first.")
 
-#     # Perform prediction using the model
-#     try:
-#         pred_label = app.clf[datapoint.dsid].predict(data)
-#         return {"prediction": str(pred_label[0])}  # Return the first prediction
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Prediction error: {e}")
+

@@ -142,28 +142,26 @@ PyObjectId = Annotated[str, BeforeValidator(str)]
 
 '''Create the data model and use strong typing. This also helps with the use of intellisense.
 '''
-class LabeledDataPoint(BaseModel):
-    """
-    Container for a single labeled data point.
-    """
 
-    # This will be aliased to `_id` when sent to MongoDB,
-    # but provided as `id` in the API requests and responses.
+# Pydantic Model for Image Metadata BASE MODEL
+class Labeled_ImageMetadata(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    feature: List[float] = Field(...) # feature data as array
-    label: str = Field(...) # label for this data
-    dsid: int = Field(..., le=50) # dataset id, for tracking different sets
-    model_config = ConfigDict(
-        populate_by_name=True,
-        arbitrary_types_allowed=True,
-        json_schema_extra={ # provide an example for FastAPI to show users
-            "example": {
-                "feature": [-0.6,4.1,5.0,6.0],
-                "label": "Walking",
-                "dsid": 2,
-            }
-        },
-    )
+    filename: str = Field(..., description="Name of the image file")
+    label: str = Field(..., description="Label for predictive model")
+    content_type: str = Field(..., description="Content type of the image (e.g., image/png)")
+    dsid: int = Field(..., description="Dataset ID to categorize images")
+    # model_config = ConfigDict(
+    # populate_by_name=True,
+    # arbitrary_types_allowed=True,
+    # json_schema_extra={ # provide an example for FastAPI to show users
+    #     "example": {
+    #         "feature": [-0.6,4.1,5.0,6.0],
+    #         "label": "Walking",
+    #         "dsid": 2,
+    #     }
+    # },
+    # )
+    
 
 class LabeledDataPointCollection(BaseModel):
     """
@@ -172,7 +170,8 @@ class LabeledDataPointCollection(BaseModel):
     This exists because providing a top-level array in a JSON response can be a [vulnerability](https://haacked.com/archive/2009/06/25/json-hijacking.aspx/)
     """
 
-    datapoints: List[LabeledDataPoint]
+    datapoints: List[Labeled_ImageMetadata]
+    
 
 class FeatureDataPoint(BaseModel):
     """
@@ -182,18 +181,21 @@ class FeatureDataPoint(BaseModel):
     # This will be aliased to `_id` when sent to MongoDB,
     # but provided as `id` in the API requests and responses.
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    feature: List[float] = Field(...) # feature data as array
-    dsid: int = Field(..., le=50) # dataset id, for tracking different sets
-    model_config = ConfigDict(
-        populate_by_name=True,
-        arbitrary_types_allowed=True,
-        json_schema_extra={ # provide an example for FastAPI to show users
-            "example": {
-                "feature": [-0.6,4.1,5.0,6.0],
-                "dsid": 2,
-            }
-        },
-    )
+    filename: str = Field(..., description="Name of the image file")
+    content_type: str = Field(..., description="Content type of the image (e.g., image/png)")
+    dsid: int = Field(..., description="Dataset ID to categorize images")
+    # model_config = ConfigDict(
+    # populate_by_name=True,
+    # arbitrary_types_allowed=True,
+    # json_schema_extra={ # provide an example for FastAPI to show users
+    #     "example": {
+    #         "feature": [-0.6,4.1,5.0,6.0],
+    #         "label": "Walking",
+    #         "dsid": 2,
+    #     }
+    # },
+    # )
+
 
 #===========================================
 #   FastAPI methods, for interacting with db 
