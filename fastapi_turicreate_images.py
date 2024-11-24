@@ -90,7 +90,7 @@ async def custom_lifespan(app: FastAPI):
     # connect to our databse
 
     db = app.mongo_client.turiDatabase
-    app.collection = db.get_collection("test_images")
+    app.collection = db.get_collection("carine_celery_test_dev")
 
     app.clf = {} # Start app with dictionary, empty classifier
 
