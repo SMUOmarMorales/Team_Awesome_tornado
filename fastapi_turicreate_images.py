@@ -20,6 +20,8 @@ import os
 from typing import Optional, List
 from enum import Enum
 import tempfile
+from PIL import Image
+from io import BytesIO
 
 # FastAPI imports
 from fastapi import FastAPI, Body, HTTPException, status, File, UploadFile
@@ -304,16 +306,10 @@ async def train_model_turi(dsid: int):
         for datapoint in datapoints:
             try:
                         
-                image_bytes = base64.b64decode(datapoint["image_data"])
-                
-                               # Validate image data
-                try:
-                    Image.open(BytesIO(image_bytes)).verify()
-                except Exception as e:
-                    raise ValueError(f"Invalid image data for document {datapoint['_id']}")
+                image_bytes = datapoint["image_data"]
 
                 # Save the bytes to a temporary file
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_file:
                     temp_file.write(image_bytes)
                     temp_file_path = temp_file.name
                 
@@ -363,7 +359,6 @@ async def train_model_turi(dsid: int):
             status_code=500,
             detail=f"Error training the image classifier model: {e}",
         )
-
 
 @app.post(
     "/predict_turi/",
