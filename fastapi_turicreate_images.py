@@ -372,6 +372,46 @@ async def train_model_turi(dsid: int):
         )
 
 @app.post(
+    "/predict_turi_phone/",
+    response_description="Predict Label from Image",
+)
+async def predict_image_turi(file: UploadFile = File(...),dsid: int = 0):
+    
+    """
+Accept base64 image data and metadata.
+"""
+
+    # Decode the base64 image
+    image_data = base64.b64decode(data["feature"])
+
+    try:
+        
+        turi_image = tc.Image(image_data)
+        data = tc.SFrame({"image": [turi_image]})
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error processing image data: {e}")
+
+ # Load the model if it's not already in memory
+    if dsid not in app.clf:
+        try:
+            # Attempt to load the model from a saved file if it exists
+            model_path = f"../Team_Awesome_tornado/models/turi_image_model_dsid{dsid}"
+            
+            if not os.path.exists(model_path): raise HTTPException(status_code=404, detail=f"Model file {model_path} does not exist. Please train the model first.")
+            
+            app.clf[dsid] = tc.load_model(model_path)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail=f"Model for DSID {dsid} not found. Please train the model first.")
+
+    # Perform prediction using the model
+    try:
+        pred_label = app.clf[dsid].predict(data)
+        return {str(pred_label[0])}  # Return the first prediction
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction error: {e}")
+
+@app.post(
     "/predict_turi/",
     response_description="Predict Label from Image",
 )
@@ -413,7 +453,6 @@ async def predict_image_turi(file: UploadFile = File(...),dsid: int = 0):
         return {str(pred_label[0])}  # Return the first prediction
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {e}")
-
 
 
 
