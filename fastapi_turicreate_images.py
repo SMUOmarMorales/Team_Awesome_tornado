@@ -19,6 +19,7 @@ Team Awesome Lab 5 DEV Prototype
 import os
 from typing import Optional, List
 from enum import Enum
+import tempfile
 
 # FastAPI imports
 from fastapi import FastAPI, Body, HTTPException, status, File, UploadFile
@@ -220,30 +221,6 @@ async def upload_image(file: UploadFile = File(...), dsid: int = 0, label = "dog
         label = label.lower(),
         dsid=dsid,
     )
-    """
-    Upload an image to the MongoDB database.
-
-    Stores the image as BSON binary data along with metadata.
-    """
-    # Read the image file as bytes
-    file_bytes = await file.read()
-
-    # Create the document with binary data and metadata
-    image_document = {
-        "filename": file.filename,
-        "content_type": file.content_type,
-        "image_data": Binary(file_bytes),  # BSON Binary for storing file bytes
-    }
-
-    # Insert the document into the collection
-    result = await app.collection.insert_one(image_document)
-
-    # Respond with the inserted metadata
-    return Labeled_ImageMetadata(
-        id=str(result.inserted_id),
-        filename=file.filename,
-        content_type=file.content_type,
-    )
 
 # Endpoint to retrieve an image by image ID
 @app.get(
@@ -300,6 +277,93 @@ async def list_images(dsid: Optional[int] = 0):
 # These allow us to interact with the REST server with ML from Turi. 
 
 # testing DEV MODE
+@app.get(
+    "/train_model_turi/{dsid}",
+    response_description="Train a Turi Image Create learning model for the given dsid using the data stored there",
+    response_model_by_alias=False,
+)
+async def train_model_turi(dsid: int):
+    """
+    Train the machine learning model using Turi
+    """
+
+    # convert data over to a scalable dataframe
+
+    datapoints = await app.collection.find({"dsid": dsid}).to_list(length=None)
+
+    if len(datapoints) < 2:
+        raise HTTPException(status_code=404, detail=f"DSID {dsid} has {len(datapoints)} datapoints.",
+        ) 
+    
+    try:     # Convert MongoDB documents to TuriCreate SFrame and store bytes as SFrame
+
+        # Create Empty frames to store data
+        images = []
+        labels = []
+
+        for datapoint in datapoints:
+            try:
+                        
+                image_bytes = base64.b64decode(datapoint["image_data"])
+                
+                               # Validate image data
+                try:
+                    Image.open(BytesIO(image_bytes)).verify()
+                except Exception as e:
+                    raise ValueError(f"Invalid image data for document {datapoint['_id']}")
+
+                # Save the bytes to a temporary file
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
+                    temp_file.write(image_bytes)
+                    temp_file_path = temp_file.name
+                
+                print("I'm here")
+                turi_image = tc.Image(temp_file_path)
+                images.append(turi_image)
+                labels.append(datapoint["label"])
+                
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Error processing image data for document {datapoint['_id']}: {e}",
+                    )
+
+         # Create SFrame with image and label columns
+        data = tc.SFrame({"image": images, "label": labels})
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error converting MongoDB documents to SFrame: {e}",
+        )
+    
+    try: # Try to train model
+        # Train an image classifier model
+        model = tc.image_classifier.create(data, target="label", verbose=True)
+
+        # Save the trained model to disk
+        model_path = f"../models/turi_image_model_dsid{dsid}"
+        model.save(model_path)
+
+        # Cache the model in memory for immediate use
+        app.clf[dsid] = model
+        
+        # save model for use later, if desired
+        model.save("../models/turi_model_dsid%d"%(dsid))
+
+        return {
+            "message": "Model trained successfully",
+            "summary": str(model),
+            "model_path": model_path,
+            "summary":f"{model}",
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error training the image classifier model: {e}",
+        )
+
 
 @app.post(
     "/predict_turi/",
@@ -316,13 +380,9 @@ async def predict_image_turi(file: UploadFile = File(...),dsid: int = 0):
 
     try:
         
-        # Save the bytes to a temporary file (TuriCreate requires an actual file path)
         temp_filename = f"/tmp/{file.filename}"
         with open(temp_filename, "wb") as temp_file:
             temp_file.write(image_bytes)
-
-        # Load the image using TuriCreate
-        turi_image = tc.Image(temp_filename)
         data = tc.SFrame({"image": [turi_image]})
         
     except Exception as e:
