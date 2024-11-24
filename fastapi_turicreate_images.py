@@ -312,8 +312,7 @@ async def train_model_turi(dsid: int):
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_file:
                     temp_file.write(image_bytes)
                     temp_file_path = temp_file.name
-                
-                print("I'm here")
+
                 turi_image = tc.Image(temp_file_path)
                 images.append(turi_image)
                 labels.append(datapoint["label"])
@@ -338,14 +337,11 @@ async def train_model_turi(dsid: int):
         model = tc.image_classifier.create(data, target="label", verbose=True)
 
         # Save the trained model to disk
-        model_path = f"../models/turi_image_model_dsid{dsid}"
+        model_path = f"../Team_Awesome_tornado/models/turi_image_model_dsid{dsid}"
         model.save(model_path)
 
         # Cache the model in memory for immediate use
         app.clf[dsid] = model
-        
-        # save model for use later, if desired
-        model.save("../models/turi_model_dsid%d"%(dsid))
 
         return {
             "message": "Model trained successfully",
@@ -378,6 +374,7 @@ async def predict_image_turi(file: UploadFile = File(...),dsid: int = 0):
         temp_filename = f"/tmp/{file.filename}"
         with open(temp_filename, "wb") as temp_file:
             temp_file.write(image_bytes)
+        turi_image = tc.Image(temp_filename)
         data = tc.SFrame({"image": [turi_image]})
         
     except Exception as e:
@@ -387,7 +384,7 @@ async def predict_image_turi(file: UploadFile = File(...),dsid: int = 0):
     if dsid not in app.clf:
         try:
             # Attempt to load the model from a saved file if it exists
-            model_path = f"../models/turi_image_model_dsid{dsid}"
+            model_path = f"../Team_Awesome_tornado/models/turi_image_model_dsid{dsid}"
             
             if not os.path.exists(model_path): raise HTTPException(status_code=404, detail=f"Model file {model_path} does not exist. Please train the model first.")
             
@@ -398,7 +395,7 @@ async def predict_image_turi(file: UploadFile = File(...),dsid: int = 0):
     # Perform prediction using the model
     try:
         pred_label = app.clf[dsid].predict(data)
-        return {"prediction": str(pred_label[0])}  # Return the first prediction
+        return {str(pred_label[0])}  # Return the first prediction
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {e}")
 
@@ -415,35 +412,35 @@ async def predict_image_turi(file: UploadFile = File(...),dsid: int = 0):
 
 
 
-#Count the number of images by DSID#
-# @app.get(
-#     "/count_images/",
-#     response_description="Get the total number of images stored",
-# )
-# async def count_images(dsid: int):
-#     """
-#     Count the total number of images stored in the database, optionally filtered by `dsid`.
-#     """
-#     query = {"dsid": dsid} if dsid is not None else {}
-#     count = await app.collection.count_documents(query)
-#     return {"total_images": count}
+# Count the number of images by DSID
+@app.get(
+    "/count_images/",
+    response_description="Get the total number of images stored",
+)
+async def count_images(dsid: int):
+    """
+    Count the total number of images stored in the database, optionally filtered by `dsid`.
+    """
+    query = {"dsid": dsid} if dsid is not None else {}
+    count = await app.collection.count_documents(query)
+    return {"total_images": count}
 
-# @app.get(
-#     "/max_dsid/",
-#     response_description="Get current maximum dsid in data",
-#     response_model_by_alias=False,
-# )
-# async def show_max_dsid():
-#     """
-#     Get the maximum dsid currently used 
-#     """
+@app.get(
+    "/max_dsid/",
+    response_description="Get current maximum dsid in data",
+    response_model_by_alias=False,
+)
+async def show_max_dsid():
+    """
+    Get the maximum dsid currently used 
+    """
 
-#     if (
-#         datapoint := await app.collection.find_one(sort=[("dsid", -1)])
-#     ) is not None:
-#         return {"dsid":datapoint["dsid"]}
+    if (
+        datapoint := await app.collection.find_one(sort=[("dsid", -1)])
+    ) is not None:
+        return {"dsid":datapoint["dsid"]}
 
-#     raise HTTPException(status_code=404, detail=f"No datasets currently created.")
+    raise HTTPException(status_code=404, detail=f"No datasets currently created.")
 
 
 

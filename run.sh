@@ -23,7 +23,7 @@ for label_folder in "$IMAGE_FOLDER"/*; do
       # Check if the file is indeed a file (to avoid errors with directories)
       if [[ -f "$image" ]]; then
         echo "Uploading $image with DSID $DSID and label $LABEL..."
-        curl -X POST "$API_URL" -F "file=@$image" -F "dsid=$DSID" -F "label=$LABEL"
+        curl -X POST "$API_URL?dsid=$DSID&label=$LABEL" -F "file=@$image"
       fi
     done
   fi
