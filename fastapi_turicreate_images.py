@@ -312,7 +312,8 @@ async def train_model_turi(dsid: int):
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_file:
                     temp_file.write(image_bytes)
                     temp_file_path = temp_file.name
-
+                
+                print("I'm here")
                 turi_image = tc.Image(temp_file_path)
                 images.append(turi_image)
                 labels.append(datapoint["label"])
