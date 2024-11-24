@@ -284,7 +284,7 @@ async def list_images(dsid: Optional[int] = 0):
     response_description="Train a Turi Image Create learning model for the given dsid using the data stored there",
     response_model_by_alias=False,
 )
-async def train_model_turi(dsid: int, model_type: str = "resnet-50:"):
+async def train_model_turi(dsid: int, model_type: str = "resnet-50"):
     """
     Train the machine learning model using Turi with the specified model type (resnet-50 or squeezenet_v1.1).
     """
@@ -311,8 +311,6 @@ async def train_model_turi(dsid: int, model_type: str = "resnet-50:"):
 
                 # Save the bytes to a temporary file
                 
-                print(datapoint["content_type"])
-                
                 if image_type == "image/png":
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_file:
                         temp_file.write(image_bytes)
@@ -326,7 +324,6 @@ async def train_model_turi(dsid: int, model_type: str = "resnet-50:"):
                 status_code=415,
                 detail=f"Unsupported content type: {image_type}. Supported types are 'image/jpeg' and 'image/png'."
             )
-
 
                 turi_image = tc.Image(temp_file_path)
                 images.append(turi_image)
@@ -348,21 +345,26 @@ async def train_model_turi(dsid: int, model_type: str = "resnet-50:"):
         )
     
     try: # Try to train model
-        # Train an image classifier model
-        model = tc.image_classifier.create(data, target="label", verbose=True)
+        # Train an image classifier model, choose resnet or squeeze-net
+        if model_type not in ["resnet-50", "squeezenet_v1.1"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported model type: {model_type}. Supported types are 'resnet-50' and 'squeezenet_v1.1'."
+            )
+
+        model = tc.image_classifier.create(data, target="label", model=model_type, verbose=True)
 
         # Save the trained model to disk
-        model_path = f"../Team_Awesome_tornado/models/turi_image_model_dsid{dsid}"
+        model_path = f"../Team_Awesome_tornado/models/turi_image_model_dsid{dsid}_{model_type}"
         model.save(model_path)
 
         # Cache the model in memory for immediate use
-        app.clf[dsid] = model
+        app.clf[(dsid, model_type)] = model
 
         return {
             "message": "Model trained successfully",
             "summary": str(model),
             "model_path": model_path,
-            "summary":f"{model}",
         }
         
     except Exception as e:
