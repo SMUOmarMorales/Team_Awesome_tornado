@@ -284,9 +284,9 @@ async def list_images(dsid: Optional[int] = 0):
     response_description="Train a Turi Image Create learning model for the given dsid using the data stored there",
     response_model_by_alias=False,
 )
-async def train_model_turi(dsid: int):
+async def train_model_turi(dsid: int, model_type: str = "resnet-50:"):
     """
-    Train the machine learning model using Turi
+    Train the machine learning model using Turi with the specified model type (resnet-50 or squeezenet_v1.1).
     """
 
     # convert data over to a scalable dataframe
@@ -375,8 +375,12 @@ async def train_model_turi(dsid: int):
     "/predict_turi_phone/",
     response_description="Predict Label from Image",
 )
-async def predict_image_turi(file: UploadFile = File(...),dsid: int = 0):
-    
+async def predict_image_turi(
+        data: dict = Body(...,
+                          example={"feature": "<base64_image_data>",
+                                   "dsid": 5})
+):    
+
     """
 Accept base64 image data and metadata.
 """
