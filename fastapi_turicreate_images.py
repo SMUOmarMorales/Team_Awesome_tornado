@@ -307,11 +307,26 @@ async def train_model_turi(dsid: int):
             try:
                         
                 image_bytes = datapoint["image_data"]
+                image_type = datapoint["content_type"]
 
                 # Save the bytes to a temporary file
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_file:
-                    temp_file.write(image_bytes)
-                    temp_file_path = temp_file.name
+                
+                print(datapoint["content_type"])
+                
+                if image_type == "image/png":
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_file:
+                        temp_file.write(image_bytes)
+                        temp_file_path = temp_file.name
+                elif image_type == "image/jpeg" or image_type == "image/jpg":
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
+                            temp_file.write(image_bytes)
+                            temp_file_path = temp_file.name
+                else:
+                        raise HTTPException(
+                status_code=415,
+                detail=f"Unsupported content type: {image_type}. Supported types are 'image/jpeg' and 'image/png'."
+            )
+
 
                 turi_image = tc.Image(temp_file_path)
                 images.append(turi_image)
