@@ -1,35 +1,11 @@
 #!/usr/bin/python
 '''
-In this example, we will use FastAPI as a gateway into a MongoDB database. We will use a REST style 
-interface that allows users to initiate GET, POST, PUT, and DELETE requests. These commands will 
-also be used to control certain functionalities with machine learning, using the ReST server to
-function as a machine learning as a service, MLaaS provider. 
-
-Specifically, we are creating an app that can take in motion sampled data and labels for 
-segments of the motion data
-
-The swift code for interacting with the interface is also available through the SMU MSLC class 
-repository. 
-Look for the https://github.com/SMU-MSLC/SwiftHTTPExample with branches marked for FastAPI and
-turi create
-
-To run this example in localhost mode only use the command:
-fastapi dev fastapi_turicreate.py
-
-Otherwise, to run the app in deployment mode (allowing for external connections), use:
-fastapi run fastapi_turicreate.py
-
-External connections will use your public facing IP, which you can find from the inet. 
-A useful command to find the right public facing ip is:
-ifconfig |grep "inet "
-which will return the ip for various network interfaces from your card. If you get something like this:
-inet 10.9.181.129 netmask 0xffffc000 broadcast 10.9.191.255 
-then your app needs to connect to the netmask (the first ip), 10.9.181.129
+Team Awesome Lab 5 DEV Prototype
+11/23/2024
 '''
 
 # For this to run properly, MongoDB should be running
-#    To start mongo use this: brew services start mongodb-community@6.0
-#    To stop it use this: brew services stop mongodb-community@6.0
+# No longer using local server but running out of our Atlas Mongo instance.
 
 # This App uses a combination of FastAPI and Motor (combining tornado/mongodb) which have documentation here:
 # FastAPI:  https://fastapi.tiangolo.com 
@@ -39,8 +15,7 @@ then your app needs to connect to the netmask (the first ip), 10.9.181.129
 # https://stackoverflow.com/questions/71516140/fastapi-runs-api-calls-in-serial-instead-of-parallel-fashion/71517830#71517830
 # Chris knows what's up 
 
-
-
+#Imports
 import os
 from typing import Optional, List
 from enum import Enum
@@ -53,7 +28,6 @@ from pydantic.functional_validators import BeforeValidator
 from bson import ObjectId, Binary
 import base64
 from typing import List  # Import List from typing for older Python versions
-
 from typing_extensions import Annotated
 
 # Motor imports
@@ -63,10 +37,10 @@ from pymongo import ReturnDocument
 
 # Machine Learning, Turi and Sklearn Imports
 import turicreate as tc
-from sklearn.neighbors import KNeighborsClassifier
+# from sklearn.neighbors import KNeighborsClassifier
 
-from joblib import dump, load
-import pickle
+# from joblib import dump, load
+# import pickle
 import numpy as np
 
 
@@ -90,7 +64,7 @@ async def custom_lifespan(app: FastAPI):
     # connect to our databse
 
     db = app.mongo_client.turiDatabase
-    app.collection = db.get_collection("carine_celery_test_dev")
+    app.collection = db.get_collection("turicreate_images")
 
     app.clf = {} # Start app with dictionary, empty classifier
 
@@ -126,67 +100,14 @@ PyObjectId = Annotated[str, BeforeValidator(str)]
 # That might seem odd for a document DB, but its not! Mongo works faster when objects
 # have a similar schema. 
 
-'''Create the data model and use strong typing. This also helps with the use of intellisense.
-'''
-class LabeledDataPoint(BaseModel):
-    """
-    Container for a single labeled data point.
-    """
-
-    # This will be aliased to `_id` when sent to MongoDB,
-    # but provided as `id` in the API requests and responses.
-    id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    feature: List[float] = Field(...) # feature data as array
-    label: str = Field(...) # label for this data
-    dsid: int = Field(..., le=50) # dataset id, for tracking different sets
-    model_config = ConfigDict(
-        populate_by_name=True,
-        arbitrary_types_allowed=True,
-        json_schema_extra={ # provide an example for FastAPI to show users
-            "example": {
-                "feature": [-0.6,4.1,5.0,6.0],
-                "label": "Walking",
-                "dsid": 2,
-            }
-        },
-    )
-
-class LabeledDataPointCollection(BaseModel):
-    """
-    A container holding a list of instances.
-
-    This exists because providing a top-level array in a JSON response can be a [vulnerability](https://haacked.com/archive/2009/06/25/json-hijacking.aspx/)
-    """
-
-    datapoints: List[LabeledDataPoint]
-
-class FeatureDataPoint(BaseModel):
-    """
-    Container for a single labeled data point.
-    """
-
-    # This will be aliased to `_id` when sent to MongoDB,
-    # but provided as `id` in the API requests and responses.
-    id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    feature: List[float] = Field(...) # feature data as array
-    dsid: int = Field(..., le=50) # dataset id, for tracking different sets
-    model_config = ConfigDict(
-        populate_by_name=True,
-        arbitrary_types_allowed=True,
-        json_schema_extra={ # provide an example for FastAPI to show users
-            "example": {
-                "feature": [-0.6,4.1,5.0,6.0],
-                "dsid": 2,
-            }
-        },
-    )
-
 # Pydantic Model for Image Metadata
 class ImageMetadata(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
     filename: str = Field(..., description="Name of the image file")
     content_type: str = Field(..., description="Content type of the image (e.g., image/png)")
-
+    dsid: int = Field(..., description="Dataset ID to categorize images")
+    # label: "Walking"
+    
 
 #===========================================
 #   FastAPI methods, for interacting with db 
@@ -235,7 +156,31 @@ async def upload_image(
     response_model=ImageMetadata,
     status_code=status.HTTP_201_CREATED,
 )
-async def upload_image(file: UploadFile = File(...)):
+async def upload_image(file: UploadFile = File(...), dsid: int = 0):
+    """
+    Upload an image to the MongoDB database with a specified dataset ID.
+    """
+    # Read the image file as bytes
+    file_bytes = await file.read()
+
+    # Create the document with binary data, metadata, and dataset ID
+    image_document = {
+        "filename": file.filename,
+        "content_type": file.content_type,
+        "image_data": Binary(file_bytes),  # BSON Binary for storing file bytes
+        "dsid": dsid,  # DSID
+    }
+
+    # Insert the document into the collection
+    result = await app.collection.insert_one(image_document)
+
+    # Respond with the inserted metadata
+    return ImageMetadata(
+        id=str(result.inserted_id),
+        filename=file.filename,
+        content_type=file.content_type,
+        dsid=dsid,
+    )
     """
     Upload an image to the MongoDB database.
 
@@ -261,7 +206,7 @@ async def upload_image(file: UploadFile = File(...)):
         content_type=file.content_type,
     )
 
-# Endpoint to retrieve an image by ID
+# Endpoint to retrieve an image by image ID
 @app.get(
     "/images/{image_id}",
     response_description="Retrieve an image from MongoDB by its ID",
@@ -295,93 +240,67 @@ async def get_image(image_id: str):
 # Endpoint to list all stored images (metadata only)
 @app.get(
     "/list_images/",
-    response_description="List all image metadata",
-    response_model=List[ImageMetadata], # updated for python 3.8
+    response_description="List all image metadata or filter by dsid",
+    response_model=List[ImageMetadata],
 )
-async def list_images():
+async def list_images(dsid: Optional[int] = None):
     """
-    List all images stored in the database (metadata only).
+    List all images stored in the database (metadata only) or filter by `dsid`.
     """
-    images = await app.collection.find({}, {"image_data": 0}).to_list(100)
+    query = {"dsid": dsid} if dsid is not None else {}
+    images = await app.collection.find(query, {"image_data": 0}).to_list(100)
+
+    if not images:
+        raise HTTPException(status_code=404, detail="No images found")
+
     return [ImageMetadata(**img) for img in images]
 
-# @app.post(
-#     "/labeled_data/",
-#     response_description="Add new labeled datapoint",
-#     response_model=LabeledDataPoint,
-#     status_code=status.HTTP_201_CREATED,
-#     response_model_by_alias=False,
-# )
-# async def create_datapoint(datapoint: LabeledDataPoint = Body(...)):
-#     """
-#     Insert a new data point. Let user know the range of values inserted
+#Count the number of images by DSID
+@app.get(
+    "/count_images/",
+    response_description="Get the total number of images stored",
+)
+async def count_images(dsid: int):
+    """
+    Count the total number of images stored in the database, optionally filtered by `dsid`.
+    """
+    query = {"dsid": dsid} if dsid is not None else {}
+    count = await app.collection.count_documents(query)
+    return {"total_images": count}
 
-#     A unique `id` will be created and provided in the response.
-#     """
-    
-#     # insert this datapoint into the database
-#     new_label = await app.collection.insert_one(
-#         datapoint.model_dump(by_alias=True, exclude=["id"])
-#     )
+@app.get(
+    "/max_dsid/",
+    response_description="Get current maximum dsid in data",
+    response_model_by_alias=False,
+)
+async def show_max_dsid():
+    """
+    Get the maximum dsid currently used 
+    """
 
-#     # send back info about the record
-#     created_label = await app.collection.find_one(
-#         {"_id": new_label.inserted_id}
-#     )
-#     # also min/max of array, rather than the entire to array to save some bandwidth
-#     # the datapoint variable is a pydantic model, so we can access with properties
-#     # but the output of mongo is a dictionary, so we need to subscript the entry
-#     created_label["feature"] = [min(datapoint.feature), max(datapoint.feature)]
+    if (
+        datapoint := await app.collection.find_one(sort=[("dsid", -1)])
+    ) is not None:
+        return {"dsid":datapoint["dsid"]}
 
-#     return created_label
+    raise HTTPException(status_code=404, detail=f"No datasets currently created.")
 
-# @app.get(
-#     "/labeled_data/{dsid}",
-#     response_description="List all labeled data in a given dsid",
-#     response_model=LabeledDataPointCollection,
-#     response_model_by_alias=False,
-# )
-# async def list_datapoints(dsid: int):
-#     """
-#     List all of the data for a given dsid in the database.
+@app.delete("/labeled_data/{dsid}", 
+    response_description="Delete an entire dsid of datapoints.")
+async def delete_dataset(dsid: int):
+    """
+    Remove an entire dsid from the database.
+    REMOVE AN ENTIRE DSID FROM THE DATABASE, USE WITH CAUTION.
+    """
 
-#     The response is unpaginated and limited to 1000 results.
-#     """
-#     return LabeledDataPointCollection(datapoints=await app.collection.find({"dsid": dsid}).to_list(1000))
+    # replace any underscores with spaces (to help support others)
 
-# @app.get(
-#     "/max_dsid/",
-#     response_description="Get current maximum dsid in data",
-#     response_model_by_alias=False,
-# )
-# async def show_max_dsid():
-#     """
-#     Get the maximum dsid currently used 
-#     """
+    delete_result = await app.collection.delete_many({"dsid": dsid})
 
-#     if (
-#         datapoint := await app.collection.find_one(sort=[("dsid", -1)])
-#     ) is not None:
-#         return {"dsid":datapoint["dsid"]}
+    if delete_result.deleted_count > 0:
+        return {"num_deleted_results":delete_result.deleted_count}
 
-#     raise HTTPException(status_code=404, detail=f"No datasets currently created.")
-
-# @app.delete("/labeled_data/{dsid}", 
-#     response_description="Delete an entire dsid of datapoints.")
-# async def delete_dataset(dsid: int):
-#     """
-#     Remove an entire dsid from the database.
-#     REMOVE AN ENTIRE DSID FROM THE DATABASE, USE WITH CAUTION.
-#     """
-
-#     # replace any underscores with spaces (to help support others)
-
-#     delete_result = await app.collection.delete_many({"dsid": dsid})
-
-#     if delete_result.deleted_count > 0:
-#         return {"num_deleted_results":delete_result.deleted_count}
-
-#     raise HTTPException(status_code=404, detail=f"DSID {dsid} not found")
+    raise HTTPException(status_code=404, detail=f"DSID {dsid} not found")
 
 # #===========================================
 # #   Machine Learning methods (Turi)
@@ -423,35 +342,64 @@ async def list_images():
 
 #     return {"summary":f"{model}"}
 
-# @app.post(
-#     "/predict_turi/",
-#     response_description="Predict Label from Datapoint",
-# )
-# async def predict_datapoint_turi(datapoint: FeatureDataPoint = Body(...)):
-#     """
-#     Post a feature set and get the label back
 
-#     """
 
-#     # place inside an SFrame (that has one row)
-#     data = tc.SFrame(data={"sequence":np.array(datapoint.feature).reshape((1,-1))})
 
-#     # if(app.clf == []):
-#     #     print("Loading Turi Model From file")
-#     #     app.clf = tc.load_model("../models/turi_model_dsid%d"%(datapoint.dsid))
+## testing
+# import turicreate as tc
+# from bson import BSON
 
-#     #     # TODO: what happens if the user asks for a model that was never trained?
-#     #     #       or if the user asks for a dsid without any data? 
-#     #     #       need a graceful failure for the client...
+# # Load BSON file and convert to an SFrame
+# def load_bson_to_sframe(bson_file):
+#     with open(bson_file, "rb") as f:
+#         bson_data = BSON(f.read()).decode()
     
+#     # Assuming bson_data is a list of records with 'image' and 'label' fields
+#     image_data = [tc.Image(record['image']) for record in bson_data]
+#     labels = [record['label'] for record in bson_data]
+#     return tc.SFrame({"image": image_data, "label": labels})
+
+# # Example usage
+# data_sframe = load_bson_to_sframe("train_data.bson")
+
+# # Train the image classifier
+# model = tc.image_classifier.create(data_sframe, target="label")
+
+#     # save model for use later, if desired
+# model.save(f"../models/turi__image_model_dsid{dsid}") #Save model by DSID
+
+
+# app.post(
+#     "/predict_turi/",
+#     response_description="Predict Label from Image",
+# )
+# async def predict_image_turi(datapoint: FeatureDataPoint = Body(...)):
+#     """
+#     Post an image and get the label back.
+#     """
+
+#     try:
+#         # Deserialize BSON image data and load as an SFrame
+#         bson_image = BSON(datapoint.feature).decode()  # Decode BSON
+#         image_data = bson_image.get("image")  # Ensure the image field is extracted
+
+#         # Create an SFrame with the image (convert image bytes to an image object)
+#         data = tc.SFrame({"image": [tc.Image(image_data)]})
+#     except Exception as e:
+#         raise HTTPException(status_code=400, detail=f"Error processing image data: {e}")
+
+#     # Load the model if it's not already in memory
 #     if datapoint.dsid not in app.clf:
 #         try:
 #             # Attempt to load the model from a saved file if it exists
-#             app.clf[datapoint.dsid] = tc.load_model(f"../models/turi_model_dsid{datapoint.dsid}")
+#             model_path = f"../models/turi_image_model_dsid{datapoint.dsid}"
+#             app.clf[datapoint.dsid] = tc.load_model(model_path)
 #         except FileNotFoundError:
-#             # Return an error if the model is not found
 #             raise HTTPException(status_code=404, detail=f"Model for DSID {datapoint.dsid} not found. Please train the model first.")
 
-
-#     pred_label = app.clf[datapoint.dsid].predict(data)
-#     return {"prediction":str(pred_label)}
+#     # Perform prediction using the model
+#     try:
+#         pred_label = app.clf[datapoint.dsid].predict(data)
+#         return {"prediction": str(pred_label[0])}  # Return the first prediction
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Prediction error: {e}")
