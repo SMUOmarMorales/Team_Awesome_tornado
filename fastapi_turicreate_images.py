@@ -66,7 +66,7 @@ async def custom_lifespan(app: FastAPI):
     # connect to our databse
 
     db = app.mongo_client.turiDatabase
-    app.collection = db.get_collection("turi_train_model_dev")
+    app.collection = db.get_collection("test_images_JC")
 
     app.clf = {} # Start app with dictionary, empty classifier
 
@@ -385,12 +385,19 @@ async def predict_image_turi(
 Accept base64 image data and metadata.
 """
 
-    # Decode the base64 image
-    image_data = base64.b64decode(data["feature"])
-
     try:
-        
-        turi_image = tc.Image(image_data)
+        # Decode the base64 image
+        image_data = base64.b64decode(data["feature"])
+        dsid = data.get("dsid")
+
+        # Save the decoded image to a temporary file (borrowed from mass
+        # predict method (force jpg since we control input from phone in Swift)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
+            temp_file.write(image_data)
+            temp_file_path = temp_file.name
+
+        # Load the temporary file as a TuriCreate Image
+        turi_image = tc.Image(temp_file_path)
         data = tc.SFrame({"image": [turi_image]})
         
     except Exception as e:
@@ -411,7 +418,7 @@ Accept base64 image data and metadata.
     # Perform prediction using the model
     try:
         pred_label = app.clf[dsid].predict(data)
-        return {str(pred_label[0])}  # Return the first prediction
+        return {"prediction":str(pred_label[0])}  # Return the first prediction
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {e}")
 
