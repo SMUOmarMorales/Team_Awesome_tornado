@@ -300,63 +300,59 @@ async def list_images(dsid: Optional[int] = 0):
 # These allow us to interact with the REST server with ML from Turi. 
 
 # testing DEV MODE
-import turicreate as tc
-from bson import BSON
 
-# Load BSON file and convert to an SFrame
-def load_bson_to_sframe(bson_file):
-    with open(bson_file, "rb") as f:
-        bson_data = BSON(f.read()).decode()
-    
-    # Assuming bson_data is a list of records with 'image' and 'label' fields
-    image_data = [tc.Image(record['image']) for record in bson_data]
-    labels = [record['label'] for record in bson_data]
-    return tc.SFrame({"image": image_data, "label": labels})
-
-# Example usage
-data_sframe = load_bson_to_sframe("train_data.bson")
-
-# Train the image classifier
-model = tc.image_classifier.create(data_sframe, target="label")
-
-    # save model for use later, if desired
-model.save(f"../models/turi__image_model_dsid{dsid}") #Save model by DSID
-
-
-app.post(
+@app.post(
     "/predict_turi/",
     response_description="Predict Label from Image",
 )
-async def predict_image_turi(datapoint: FeatureDataPoint = Body(...)):
+async def predict_image_turi(file: UploadFile = File(...),dsid: int = 0):
+    
     """
     Post an image and get the label back.
     """
+    
+        # Read the image file as bytes
+    image_bytes = await file.read()
 
     try:
-        # Deserialize BSON image data and load as an SFrame
-        bson_image = BSON(datapoint.feature).decode()  # Decode BSON
-        image_data = bson_image.get("image")  # Ensure the image field is extracted
+        
+        # Save the bytes to a temporary file (TuriCreate requires an actual file path)
+        temp_filename = f"/tmp/{file.filename}"
+        with open(temp_filename, "wb") as temp_file:
+            temp_file.write(image_bytes)
 
-        # Create an SFrame with the image (convert image bytes to an image object)
-        data = tc.SFrame({"image": [tc.Image(image_data)]})
+        # Load the image using TuriCreate
+        turi_image = tc.Image(temp_filename)
+        data = tc.SFrame({"image": [turi_image]})
+        
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error processing image data: {e}")
 
-    # Load the model if it's not already in memory
-    if datapoint.dsid not in app.clf:
+ # Load the model if it's not already in memory
+    if dsid not in app.clf:
         try:
             # Attempt to load the model from a saved file if it exists
-            model_path = f"../models/turi_image_model_dsid{datapoint.dsid}"
-            app.clf[datapoint.dsid] = tc.load_model(model_path)
+            model_path = f"../models/turi_image_model_dsid{dsid}"
+            
+            if not os.path.exists(model_path): raise HTTPException(status_code=404, detail=f"Model file {model_path} does not exist. Please train the model first.")
+            
+            app.clf[dsid] = tc.load_model(model_path)
         except FileNotFoundError:
-            raise HTTPException(status_code=404, detail=f"Model for DSID {datapoint.dsid} not found. Please train the model first.")
+            raise HTTPException(status_code=404, detail=f"Model for DSID {dsid} not found. Please train the model first.")
 
     # Perform prediction using the model
     try:
-        pred_label = app.clf[datapoint.dsid].predict(data)
+        pred_label = app.clf[dsid].predict(data)
         return {"prediction": str(pred_label[0])}  # Return the first prediction
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {e}")
+
+
+
+
+
+
+
 
 
 
@@ -364,7 +360,7 @@ async def predict_image_turi(datapoint: FeatureDataPoint = Body(...)):
 
 
 
-#Count the number of images by DSID
+#Count the number of images by DSID#
 # @app.get(
 #     "/count_images/",
 #     response_description="Get the total number of images stored",
