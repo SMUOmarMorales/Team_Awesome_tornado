@@ -67,6 +67,10 @@ from joblib import dump, load
 import pickle
 import numpy as np
 
+# Import the Celery modules and files
+from celery.result import AsyncResult
+from celery_tasks import train_model_turi_task, predict_datapoint_turi_task
+import celery_app
 
 # define some things in API
 async def custom_lifespan(app: FastAPI):
@@ -276,10 +280,11 @@ async def delete_dataset(dsid: int):
     raise HTTPException(status_code=404, detail=f"DSID {dsid} not found")
 
 #===========================================
-#   Machine Learning methods (Turi)
+#   Machine Learning methods (Turi) Celery
 #-------------------------------------------
-# These allow us to interact with the REST server with ML from Turi. 
 
+# The Celery variables below have been built with this resource https://docs.celeryq.dev/en/stable/getting-started/introduction.html
+# and with the help of ChatGPT.
 @app.get(
     "/train_model_turi/{dsid}",
     response_description="Train a machine learning model for the given dsid",
@@ -287,63 +292,32 @@ async def delete_dataset(dsid: int):
 )
 async def train_model_turi(dsid: int):
     """
-    Train the machine learning model using Turi
+    Trigger the training of the machine learning model asynchronously using Celery
     """
-
-    # convert data over to a scalable dataframe
-
-    datapoints = await app.collection.find({"dsid": dsid}).to_list(length=None) # Call to dictionary
-
-    if len(datapoints) < 2:
-        raise HTTPException(status_code=404, detail=f"DSID {dsid} has {len(datapoints)} datapoints.") 
-
-    # convert to dictionary and create SFrame
-    data = tc.SFrame(data={"target":[datapoint["label"] for datapoint in datapoints], 
-        "sequence":np.array([datapoint["feature"] for datapoint in datapoints])}
-    )
-        
-    # create a classifier model  
-    model = tc.classifier.create(data,target="target",verbose=0)# training
+    mongo_uri = "mongodb+srv://omarcastelan:seFEZm1yn2EsKGyZ@smu8392coylef2024.l1ff5.mongodb.net/?retryWrites=true&w=majority&appName=SMU8392CoyleF2024"
+    model_save_path = "./models"
+    task = train_model_turi_task.delay(dsid, mongo_uri, model_save_path)
+    return {"task_id": task.id, "status": "Processing"}
     
-    # save model for use later, if desired
-    model.save(f"../models/turi_model_dsid{dsid}") #Save model by DSID
-
-    # save this for use later 
-    app.clf[dsid] = model
-
-    # return {"summary":f"KNN classifier with accuracy {acc}"}
-
-    return {"summary":f"{model}"}
+@app.get("/task_status/{task_id}", response_description="Get Celery task status.")
+async def get_task_status(task_id: str):
+    task_result = AsyncResult(task_id)
+    return {
+        "task_id": task_id,
+        "status": task_result.status,
+        "result": task_result.result if task_result.ready() else None,
+    }
 
 @app.post(
     "/predict_turi/",
-    response_description="Predict Label from Datapoint",
+    response_description="Predict Label from a feature set asynchronously",
 )
 async def predict_datapoint_turi(datapoint: FeatureDataPoint = Body(...)):
     """
-    Post a feature set and get the label back
+    Trigger an asynchronous predictions task
 
     """
 
-    # place inside an SFrame (that has one row)
-    data = tc.SFrame(data={"sequence":np.array(datapoint.feature).reshape((1,-1))})
-
-    # if(app.clf == []):
-    #     print("Loading Turi Model From file")
-    #     app.clf = tc.load_model("../models/turi_model_dsid%d"%(datapoint.dsid))
-
-    #     # TODO: what happens if the user asks for a model that was never trained?
-    #     #       or if the user asks for a dsid without any data? 
-    #     #       need a graceful failure for the client...
-    
-    if datapoint.dsid not in app.clf:
-        try:
-            # Attempt to load the model from a saved file if it exists
-            app.clf[datapoint.dsid] = tc.load_model(f"../models/turi_model_dsid{datapoint.dsid}")
-        except FileNotFoundError:
-            # Return an error if the model is not found
-            raise HTTPException(status_code=404, detail=f"Model for DSID {datapoint.dsid} not found. Please train the model first.")
-
-
-    pred_label = app.clf[datapoint.dsid].predict(data)
-    return {"prediction":str(pred_label)}
+    mongo_uri = "mongodb+srv://omarcastelan:seFEZm1yn2EsKGyZ@smu8392coylef2024.l1ff5.mongodb.net/?retryWrites=true&w=majority&appName=SMU8392CoyleF2024"
+    task = predict_datapoint_turi_task.delay(datapoint.dsid, datapoint.feature, mongo_uri)
+    return {"task_id": task.id, "status": "Processing"}
