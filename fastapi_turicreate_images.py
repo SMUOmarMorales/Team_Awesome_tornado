@@ -1,10 +1,15 @@
 #!/usr/bin/python
 '''
-Team Awesome Lab 5 DEV Prototype
-11/23/2024
+
+Team Awesome Lab 5
+
+Carine Graff
+Omar Morales
+James Castle
+
+11/25/2024
 '''
 
-# For this to run properly, MongoDB should be running
 # No longer using local server but running out of our Atlas Mongo instance.
 
 # This App uses a combination of FastAPI and Motor (combining tornado/mongodb) which have documentation here:
@@ -38,9 +43,8 @@ from bson import ObjectId
 import motor.motor_asyncio
 from pymongo import ReturnDocument
 
-# Machine Learning, Turi and Sklearn Imports
+# Machine Learning, Turi
 import turicreate as tc
-# from sklearn.neighbors import KNeighborsClassifier
 
 # from joblib import dump, load
 # import pickle
@@ -72,7 +76,7 @@ async def custom_lifespan(app: FastAPI):
     # connect to our databse
 
     db = app.mongo_client.turiDatabase
-    app.collection = db.get_collection("test_images_JC")
+    app.collection = db.get_collection("turi_train_model_dev")
 
     app.clf = {} # Start app with dictionary, empty classifier
 
@@ -90,7 +94,6 @@ app = FastAPI(
 )
 
 # Represents an ObjectId field in the database.
-# It will be represented as a `str` on the model so that it can be serialized to JSON.
 
 PyObjectId = Annotated[str, BeforeValidator(str)]
 
@@ -155,11 +158,6 @@ class FeatureDataPoint(BaseModel):
     # },
     # )
 
-
-
-
-
-
 #===========================================
 #   FastAPI methods, for interacting with db 
 #-------------------------------------------
@@ -198,7 +196,6 @@ async def upload_image(
     except Exception as e:
         raise HTTPException(status_code=400,
                             detail=f"Error processing image: {e}")
-
 
 # Upload image using the web API, for DEV/UAT purpose
 @app.post(
@@ -289,7 +286,7 @@ async def list_images(dsid: Optional[int] = 0):
 #-------------------------------------------
 # These allow us to interact with the REST server with ML from Turi. 
 
-# testing DEV MODE
+# Testing in DEV complete, moving on to UAT
 @app.get(
     "/train_model_turi/{dsid}",
     response_description="Train a Turi Image Create learning model for the given dsid using the data stored there",
@@ -342,7 +339,6 @@ async def train_model_turi(dsid: int, model_type: int = 1):
                 image_type = datapoint["content_type"]
 
                 # Save the bytes to a temporary file
-                
                 if image_type == "image/png":
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_file:
                         temp_file.write(image_bytes)
@@ -377,7 +373,17 @@ async def train_model_turi(dsid: int, model_type: int = 1):
         )
     
     try: # Try to train model
-        model = tc.image_classifier.create(data, target="label", model=selected_model_type, verbose=True)
+
+             # Split the data into training and validation sets
+        train_data, test_data = data.random_split(0.8)
+
+        # Train the model
+        model = tc.image_classifier.create(
+            train_data, target="label", model=selected_model_type, verbose=True
+        )
+
+        # Evaluate the model
+        metrics = model.evaluate(test_data)
 
         # Save the trained model to disk
         model_path = f"../Team_Awesome_tornado/models/turi_image_model_dsid{dsid}_{model_type}"
@@ -388,7 +394,7 @@ async def train_model_turi(dsid: int, model_type: int = 1):
 
         return {
                 "message": f"Model '{selected_model_type}' trained successfully",
-                "summary": str(model),
+                "accuracy": metrics.get("accuracy", None),
                 "model_path": model_path,
             }
         
@@ -405,7 +411,8 @@ async def train_model_turi(dsid: int, model_type: int = 1):
 async def predict_image_turi(
         data: dict = Body(...,
                           example={"feature": "<base64_image_data>",
-                                   "dsid": 5})
+                                   "dsid": 5,
+                                   "model_type": 1})
 ):    
 
     """
@@ -416,6 +423,19 @@ Accept base64 image data and metadata.
         # Decode the base64 image
         image_data = base64.b64decode(data["feature"])
         dsid = data.get("dsid")
+        model_type = data.get("model_type",1)
+
+        # Validate model type
+        model_map = {
+            1: "resnet-50",
+            2: "squeezenet_v1.1"
+        }
+
+        if model_type not in model_map:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid model type: {model_type}. Use 1 for 'resnet-50' or 2 for 'squeezenet_v1.1'."
+            )
 
         # Save the decoded image to a temporary file (borrowed from mass
         # predict method (force jpg since we control input from phone in Swift)
@@ -430,24 +450,41 @@ Accept base64 image data and metadata.
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error processing image data: {e}")
 
- # Load the model if it's not already in memory
-    if dsid not in app.clf:
-        try:
-            # Attempt to load the model from a saved file if it exists
-            model_path = f"../Team_Awesome_tornado/models/turi_image_model_dsid{dsid}"
-            
-            if not os.path.exists(model_path): raise HTTPException(status_code=404, detail=f"Model file {model_path} does not exist. Please train the model first.")
-            
-            app.clf[dsid] = tc.load_model(model_path)
-        except FileNotFoundError:
-            raise HTTPException(status_code=404, detail=f"Model for DSID {dsid} not found. Please train the model first.")
+    # Define a model key based on DSID and model type
+    model_key = (dsid, model_type)
 
-    # Perform prediction using the model
+ # Load the model if it's not already in memory
+    if model_key not in app.clf:
+        try:
+             # Attempt to load the model from a saved file
+            model_path = f"../Team_Awesome_tornado/models/turi_image_model_dsid{dsid}_{model_type}"
+
+            if not os.path.exists(model_path):
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Model file {model_path} does not exist. Please train the model first."
+                )
+
+            app.clf[model_key] = tc.load_model(model_path)
+
+        except FileNotFoundError:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Model for DSID {dsid} and type '{model_map[model_type]}' not found. Please train the model first."
+            )
+
+ # Perform prediction using the model
     try:
-        pred_label = app.clf[dsid].predict(data)
-        return {"prediction":str(pred_label[0])}  # Return the first prediction
+        pred_label = app.clf[model_key].predict(data)
+        return {
+            "prediction": str(pred_label[0]),
+            "model_type": model_map[model_type]
+        }  # Return the first prediction and model type
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Prediction error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Prediction error using model type '{model_map[model_type]}': {e}"
+        )
 
 @app.post(
     "/predict_turi/",
@@ -526,6 +563,9 @@ async def predict_image_turi(file: UploadFile = File(...),
         )
 
 
+#===========================================
+#   Celery
+#-------------------------------------------
 
 # @app.post(
 #     "/predict_turi/",
@@ -553,8 +593,9 @@ async def predict_image_turi(file: UploadFile = File(...),
 #         return {"status": "Task failed", "error": str(task_result.result)}
 #     return {"status": task_result.state}
 
-
-## Additional methods
+#===========================================
+#   Additional Methods
+#-------------------------------------------
 
 # Count the number of images by DSID
 @app.get(
@@ -585,6 +626,3 @@ async def show_max_dsid():
         return {"dsid":datapoint["dsid"]}
 
     raise HTTPException(status_code=404, detail=f"No datasets currently created.")
-
-
-
