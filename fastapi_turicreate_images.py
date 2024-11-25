@@ -46,6 +46,16 @@ import turicreate as tc
 # import pickle
 import numpy as np
 
+# Celery imports
+from celery import Celery, AsyncResult
+
+
+celery_app = Celery(
+    'fastapi_turicreate_images',
+    broker='redis://localhost:6379/0',  # Redis as broker
+    backend= 'mongodb+srv://omarcastelan:seFEZm1yn2EsKGyZ@smu8392coylef2024.l1ff5.mongodb.net/?retryWrites=true&w=majority&appName=SMU8392CoyleF2024' # MongoDB as backend
+)
+
 # define some things in API
 async def custom_lifespan(app: FastAPI):
     # Motor API allows us to directly interact with a hosted MongoDB server
@@ -148,6 +158,11 @@ class FeatureDataPoint(BaseModel):
     #     }
     # },
     # )
+
+
+
+
+
 
 #===========================================
 #   FastAPI methods, for interacting with db 
@@ -279,24 +294,15 @@ async def list_images(dsid: Optional[int] = 0):
 # These allow us to interact with the REST server with ML from Turi. 
 
 # testing DEV MODE
-@app.get(
-    "/train_model_turi/{dsid}",
-    response_description="Train a Turi Image Create learning model for the given dsid using the data stored there",
-    response_model_by_alias=False,
-)
-async def train_model_turi(dsid: int):
-    """
-    Train the machine learning model using Turi
-    """
+# @app.get(
+#     "/train_model_turi/{dsid}",
+#     response_description="Train a Turi Image Create learning model for the given dsid using the data stored there",
+#     response_model_by_alias=False,
+# )
 
-    # convert data over to a scalable dataframe
-
-    datapoints = await app.collection.find({"dsid": dsid}).to_list(length=None)
-
-    if len(datapoints) < 2:
-        raise HTTPException(status_code=404, detail=f"DSID {dsid} has {len(datapoints)} datapoints.",
-        ) 
-    
+# CELERY TRAINING
+@celery_app.task
+def train_model_task(dsid: int, datapoints: list):
     try:     # Convert MongoDB documents to TuriCreate SFrame and store bytes as SFrame
 
         # Create Empty frames to store data
@@ -355,20 +361,35 @@ async def train_model_turi(dsid: int):
             status_code=500,
             detail=f"Error training the image classifier model: {e}",
         )
-
-@app.post(
-    "/predict_turi/",
-    response_description="Predict Label from Image",
-)
-async def predict_image_turi(file: UploadFile = File(...),dsid: int = 0):
-    
+@app.post("/train_model_turi/{dsid}")
+async def train_model_turi(dsid: int):
     """
-    Post an image and get the label back.
+    Trigger the training of the machine learning model asynchronously with Celery
     """
-    
-        # Read the image file as bytes
-    image_bytes = await file.read()
+    # convert data over to a scalable dataframe
+    datapoints = await app.collection.find({"dsid": dsid}).to_list(length=None)
+    if len(datapoints) < 2:
+        raise HTTPException(status_code=404, detail=f"DSID {dsid} has {len(datapoints)} datapoints.",
+        ) 
+    task = train_model_task.delay(dsid, datapoints)
+    return {"task_id": task.id, "status": "training started"}
 
+@app.get("train_status/{task_id}")
+async def train_status(task_id: str):
+    task_result = AsyncResult(task_id, app = celery_app)
+    if task_result.state == "PENDING":
+        return {"status": "Task is pending"}
+    elif task_result.statet == "SUCCESS":
+        return {"status": "Task completed", "model_path": task_result.result}
+    elif task_result.state == "FAILURE":
+        return {"status": "Task failed", "error": str(task_result.result)}
+    return {"status": task_result.state}
+
+
+# PREDICTION
+# Celery tasks
+@celery_app.task
+def predict_image_task(dsid: int, image_bytes: bytes):
     try:
         
         temp_filename = f"/tmp/{file.filename}"
@@ -398,7 +419,37 @@ async def predict_image_turi(file: UploadFile = File(...),dsid: int = 0):
         return {str(pred_label[0])}  # Return the first prediction
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {e}")
+  
 
+
+
+@app.post(
+    "/predict_turi/",
+    response_description="Predict Label from Image",
+)
+async def predict_image_turi(file: UploadFile = File(...),dsid: int = 0):
+    
+    """
+    Post an image and get the label back.
+    """
+
+    # Read the image file as bytes
+    image_bytes = await file.read()
+    task = predict_image_task.delay(dsid, image_bytes)
+    return {"task_id": task.id, "status": "Prediction started"}
+      
+
+
+@app.get("/predict_status/{task_id}")
+async def predict_status(task_id: str):
+    task_result = AsyncResult(task_id, app=celery_app)
+    if task_result.state == "PENDING":
+        return {"status": "Task is pending"}
+    elif task_result.statet == "SUCCESS":
+        return {"status": "Task completed", "prediction": task_result.result}
+    elif task_result.state == "FAILURE":
+        return {"status": "Task failed", "error": str(task_result.result)}
+    return {"status": task_result.state}
 
 
 
