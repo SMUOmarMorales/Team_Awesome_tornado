@@ -284,10 +284,31 @@ async def list_images(dsid: Optional[int] = 0):
     response_description="Train a Turi Image Create learning model for the given dsid using the data stored there",
     response_model_by_alias=False,
 )
-async def train_model_turi(dsid: int, model_type: str = "resnet-50"):
+async def train_model_turi(dsid: int, model_type: int = 1):
+    
     """
-    Train the machine learning model using Turi with the specified model type (resnet-50 or squeezenet_v1.1).
+    Train the machine learning model using Turi with the specified model type:
+    - 1 for 'resnet-50'
+    - 2 for 'squeezenet_v1.1'
     """
+
+    # Map user input to model types
+    model_map = {
+        1: "resnet-50",
+        2: "squeezenet_v1.1"
+    }
+
+    # Validate the model_type
+    if model_type not in model_map:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid model type: {model_type}. Use 1 for 'resnet-50' or 2 for 'squeezenet_v1.1'."
+        )
+        
+    selected_model_type = model_map[model_type]
+        
+    # Retrieve the actual model type from the map
+    selected_model_type = model_map[model_type]
 
     # convert data over to a scalable dataframe
 
@@ -345,14 +366,7 @@ async def train_model_turi(dsid: int, model_type: str = "resnet-50"):
         )
     
     try: # Try to train model
-        # Train an image classifier model, choose resnet or squeeze-net
-        if model_type not in ["resnet-50", "squeezenet_v1.1"]:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported model type: {model_type}. Supported types are 'resnet-50' and 'squeezenet_v1.1'."
-            )
-
-        model = tc.image_classifier.create(data, target="label", model=model_type, verbose=True)
+        model = tc.image_classifier.create(data, target="label", model=selected_model_type, verbose=True)
 
         # Save the trained model to disk
         model_path = f"../Team_Awesome_tornado/models/turi_image_model_dsid{dsid}_{model_type}"
@@ -362,10 +376,10 @@ async def train_model_turi(dsid: int, model_type: str = "resnet-50"):
         app.clf[(dsid, model_type)] = model
 
         return {
-            "message": "Model trained successfully",
-            "summary": str(model),
-            "model_path": model_path,
-        }
+                "message": f"Model '{selected_model_type}' trained successfully",
+                "summary": str(model),
+                "model_path": model_path,
+            }
         
     except Exception as e:
         raise HTTPException(
@@ -421,13 +435,32 @@ Accept base64 image data and metadata.
     "/predict_turi/",
     response_description="Predict Label from Image",
 )
-async def predict_image_turi(file: UploadFile = File(...),dsid: int = 0):
+async def predict_image_turi(file: UploadFile = File(...),
+                             dsid: int = 0,
+                             model_type_flag: int =1):# default to resnet-50
     
     """
-    Post an image and get the label back.
+    Post an image and get the label back using the specified model type:
+    - 1 for 'resnet-50'
+    - 2 for 'squeezenet_v1.1'
     """
-    
-        # Read the image file as bytes
+    # Map the flag to the model type
+    model_map = {
+        1: "resnet-50",
+        2: "squeezenet_v1.1"
+    }
+
+    # Validate the flag
+    if model_type_flag not in model_map:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid model type flag: {model_type_flag}. Use 1 for 'resnet-50' or 2 for 'squeezenet_v1.1'."
+        )
+        
+        # Get the model type from the map
+    selected_model_type = model_map[model_type_flag]
+
+    # Read the image file as bytes
     image_bytes = await file.read()
 
     try:
@@ -441,24 +474,38 @@ async def predict_image_turi(file: UploadFile = File(...),dsid: int = 0):
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error processing image data: {e}")
 
- # Load the model if it's not already in memory
-    if dsid not in app.clf:
+  # Define a model key based on DSID and model type
+    model_key = (dsid, selected_model_type)
+
+    # Load the model if it's not already in memory
+    if model_key not in app.clf:
         try:
-            # Attempt to load the model from a saved file if it exists
-            model_path = f"../Team_Awesome_tornado/models/turi_image_model_dsid{dsid}"
-            
-            if not os.path.exists(model_path): raise HTTPException(status_code=404, detail=f"Model file {model_path} does not exist. Please train the model first.")
-            
-            app.clf[dsid] = tc.load_model(model_path)
+            # Attempt to load the model from a saved file
+            model_path = f"../Team_Awesome_tornado/models/turi_image_model_dsid{dsid}_{model_type_flag}"
+
+            if not os.path.exists(model_path):
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Model file {model_path} does not exist. Please train the model first."
+                )
+
+            app.clf[model_key] = tc.load_model(model_path)
+
         except FileNotFoundError:
-            raise HTTPException(status_code=404, detail=f"Model for DSID {dsid} not found. Please train the model first.")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Model for DSID {dsid} and type '{selected_model_type}' not found. Please train the model first."
+            )
 
     # Perform prediction using the model
     try:
-        pred_label = app.clf[dsid].predict(data)
+        pred_label = app.clf[model_key].predict(data)
         return {str(pred_label[0])}  # Return the first prediction
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Prediction error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Prediction error using model type '{selected_model_type}': {e}"
+        )
 
 
 
