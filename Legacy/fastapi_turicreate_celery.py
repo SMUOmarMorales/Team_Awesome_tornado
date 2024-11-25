@@ -70,7 +70,7 @@ import numpy as np
 # Import the Celery modules and files
 from celery.result import AsyncResult
 from celery_tasks import train_model_turi_task, predict_datapoint_turi_task
-import celery_app
+import celery_app as celery_app
 
 # define some things in API
 async def custom_lifespan(app: FastAPI):
