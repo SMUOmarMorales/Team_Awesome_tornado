@@ -46,15 +46,11 @@ import turicreate as tc
 # import pickle
 import numpy as np
 
-# Celery imports
-from celery import Celery, AsyncResult
-
-
-celery_app = Celery(
-    'fastapi_turicreate_images',
-    broker='redis://localhost:6379/0',  # Redis as broker
-    backend= 'mongodb+srv://omarcastelan:seFEZm1yn2EsKGyZ@smu8392coylef2024.l1ff5.mongodb.net/?retryWrites=true&w=majority&appName=SMU8392CoyleF2024' # MongoDB as backend
-)
+# celery_app = Celery(
+#     'fastapi_turicreate_images',
+#     broker='redis://localhost:6379/0',  # Redis as broker
+#     backend= 'mongodb+srv://omarcastelan:seFEZm1yn2EsKGyZ@smu8392coylef2024.l1ff5.mongodb.net/?retryWrites=true&w=majority&appName=SMU8392CoyleF2024' # MongoDB as backend
+# )
 
 # define some things in API
 async def custom_lifespan(app: FastAPI):
@@ -531,45 +527,34 @@ async def predict_image_turi(file: UploadFile = File(...),
 
 
 
-@app.post(
-    "/predict_turi/",
-    response_description="Predict Label from Image",
-)
-async def predict_image_turi(file: UploadFile = File(...),dsid: int = 0):
+# @app.post(
+#     "/predict_turi/",
+#     response_description="Predict Label from Image",
+# )
+# async def predict_image_turi(file: UploadFile = File(...),dsid: int = 0):
     
-    """
-    Post an image and get the label back.
-    """
+#     """
+#     Post an image and get the label back.
+#     """
 
-    # Read the image file as bytes
-    image_bytes = await file.read()
-    task = predict_image_task.delay(dsid, image_bytes)
-    return {"task_id": task.id, "status": "Prediction started"}
+#     # Read the image file as bytes
+#     image_bytes = await file.read()
+#     task = predict_image_task.delay(dsid, image_bytes)
+#     return {"task_id": task.id, "status": "Prediction started"}
       
-
-
-@app.get("/predict_status/{task_id}")
-async def predict_status(task_id: str):
-    task_result = AsyncResult(task_id, app=celery_app)
-    if task_result.state == "PENDING":
-        return {"status": "Task is pending"}
-    elif task_result.statet == "SUCCESS":
-        return {"status": "Task completed", "prediction": task_result.result}
-    elif task_result.state == "FAILURE":
-        return {"status": "Task failed", "error": str(task_result.result)}
-    return {"status": task_result.state}
-
-
-
-
-
-
-
+# @app.get("/predict_status/{task_id}")
+# async def predict_status(task_id: str):
+#     task_result = AsyncResult(task_id, app=celery_app)
+#     if task_result.state == "PENDING":
+#         return {"status": "Task is pending"}
+#     elif task_result.statet == "SUCCESS":
+#         return {"status": "Task completed", "prediction": task_result.result}
+#     elif task_result.state == "FAILURE":
+#         return {"status": "Task failed", "error": str(task_result.result)}
+#     return {"status": task_result.state}
 
 
 ## Additional methods
-
-
 
 # Count the number of images by DSID
 @app.get(
