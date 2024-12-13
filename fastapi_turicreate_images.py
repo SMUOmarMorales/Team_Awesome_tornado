@@ -40,7 +40,7 @@ from typing_extensions import Annotated
 
 import motor.motor_asyncio
 from pymongo import ReturnDocument
-from celery_app import celery_app
+# from Legacy.celery_app import celery_app
 # from celery import Celery, AsyncResult
 # from celery.result import AsyncResults
 
@@ -568,266 +568,266 @@ async def predict_image_turi(file: UploadFile = File(...),
 #   Celery FastAPI (Turi) Methods Celery/Redis Servers
 #-------------------------------------------
 
-# CELERY TRAINING
+# # CELERY TRAINING
 
-@celery_app.task
-def train_model_task(dsid: int, datapoints: list, model_type: int = 1):
+# @celery_app.task
+# def train_model_task(dsid: int, datapoints: list, model_type: int = 1):
 
-    """
-    Train the machine learning model using Turi with the specified model type:
-    - 1 for 'resnet-50'
-    - 2 for 'squeezenet_v1.1'
-    """
+#     """
+#     Train the machine learning model using Turi with the specified model type:
+#     - 1 for 'resnet-50'
+#     - 2 for 'squeezenet_v1.1'
+#     """
 
-    # Map user input to model types
-    model_map = {
-        1: "resnet-50",
-        2: "squeezenet_v1.1"
-    }
+#     # Map user input to model types
+#     model_map = {
+#         1: "resnet-50",
+#         2: "squeezenet_v1.1"
+#     }
 
-    # Validate the model_type
-    if model_type not in model_map:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid model type: {model_type}. Use 1 for 'resnet-50' or 2 for 'squeezenet_v1.1'."
-        )
+#     # Validate the model_type
+#     if model_type not in model_map:
+#         raise HTTPException(
+#             status_code=400,
+#             detail=f"Invalid model type: {model_type}. Use 1 for 'resnet-50' or 2 for 'squeezenet_v1.1'."
+#         )
         
-    selected_model_type = model_map[model_type]
+#     selected_model_type = model_map[model_type]
         
-    # Retrieve the actual model type from the map
-    selected_model_type = model_map[model_type]
+#     # Retrieve the actual model type from the map
+#     selected_model_type = model_map[model_type]
 
-    # convert data over to a scalable dataframe
+#     # convert data over to a scalable dataframe
 
-    datapoints = app.collection.find({"dsid": dsid}).to_list(length=None)
+#     datapoints = app.collection.find({"dsid": dsid}).to_list(length=None)
 
-    if len(datapoints) < 2:
-        raise HTTPException(status_code=404, detail=f"DSID {dsid} has {len(datapoints)} datapoints.",
-        ) 
+#     if len(datapoints) < 2:
+#         raise HTTPException(status_code=404, detail=f"DSID {dsid} has {len(datapoints)} datapoints.",
+#         ) 
     
-    try:     # Convert MongoDB documents to TuriCreate SFrame and store bytes as SFrame
+#     try:     # Convert MongoDB documents to TuriCreate SFrame and store bytes as SFrame
 
-        # Create Empty frames to store data
-        images = []
-        labels = []
+#         # Create Empty frames to store data
+#         images = []
+#         labels = []
 
-        for datapoint in datapoints:
-            try:
+#         for datapoint in datapoints:
+#             try:
                         
-                image_bytes = datapoint["image_data"]
-                image_type = datapoint["content_type"]
+#                 image_bytes = datapoint["image_data"]
+#                 image_type = datapoint["content_type"]
 
-                # Save the bytes to a temporary file
-                if image_type == "image/png":
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_file:
-                        temp_file.write(image_bytes)
-                        temp_file_path = temp_file.name
-                elif image_type == "image/jpeg" or image_type == "image/jpg":
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
-                            temp_file.write(image_bytes)
-                            temp_file_path = temp_file.name
-                else:
-                        raise HTTPException(
-                status_code=415,
-                detail=f"Unsupported content type: {image_type}. Supported types are 'image/jpeg' and 'image/png'."
-            )
+#                 # Save the bytes to a temporary file
+#                 if image_type == "image/png":
+#                     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_file:
+#                         temp_file.write(image_bytes)
+#                         temp_file_path = temp_file.name
+#                 elif image_type == "image/jpeg" or image_type == "image/jpg":
+#                         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
+#                             temp_file.write(image_bytes)
+#                             temp_file_path = temp_file.name
+#                 else:
+#                         raise HTTPException(
+#                 status_code=415,
+#                 detail=f"Unsupported content type: {image_type}. Supported types are 'image/jpeg' and 'image/png'."
+#             )
 
-                turi_image = tc.Image(temp_file_path)
-                images.append(turi_image)
-                labels.append(datapoint["label"])
+#                 turi_image = tc.Image(temp_file_path)
+#                 images.append(turi_image)
+#                 labels.append(datapoint["label"])
                 
-            except Exception as e:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Error processing image data for document {datapoint['_id']}: {e}",
-                    )
+#             except Exception as e:
+#                 raise HTTPException(
+#                     status_code=500,
+#                     detail=f"Error processing image data for document {datapoint['_id']}: {e}",
+#                     )
 
-         # Create SFrame with image and label columns
-        data = tc.SFrame({"image": images, "label": labels})
+#          # Create SFrame with image and label columns
+#         data = tc.SFrame({"image": images, "label": labels})
         
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error converting MongoDB documents to SFrame: {e}",
-        )
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=500,
+#             detail=f"Error converting MongoDB documents to SFrame: {e}",
+#         )
     
-    try: # Try to train model
+#     try: # Try to train model
 
-             # Split the data into training and validation sets
-        train_data, test_data = data.random_split(0.8)
+#              # Split the data into training and validation sets
+#         train_data, test_data = data.random_split(0.8)
 
-        # Train the model
-        model = tc.image_classifier.create(
-            train_data, target="label", model=selected_model_type, verbose=True
-        )
+#         # Train the model
+#         model = tc.image_classifier.create(
+#             train_data, target="label", model=selected_model_type, verbose=True
+#         )
 
-        # Evaluate the model
-        metrics = model.evaluate(test_data)
+#         # Evaluate the model
+#         metrics = model.evaluate(test_data)
 
-        # Save the trained model to disk
-        model_path = f"../Team_Awesome_tornado/models/turi_image_model_dsid{dsid}_{model_type}"
-        model.save(model_path)
+#         # Save the trained model to disk
+#         model_path = f"../Team_Awesome_tornado/models/turi_image_model_dsid{dsid}_{model_type}"
+#         model.save(model_path)
 
-        # Cache the model in memory for immediate use
-        app.clf[(dsid, model_type)] = model
+#         # Cache the model in memory for immediate use
+#         app.clf[(dsid, model_type)] = model
 
-        return {
-                "message": f"Model '{selected_model_type}' trained successfully",
-                "accuracy": metrics.get("accuracy", None),
-                "model_path": model_path,
-            }
+#         return {
+#                 "message": f"Model '{selected_model_type}' trained successfully",
+#                 "accuracy": metrics.get("accuracy", None),
+#                 "model_path": model_path,
+#             }
         
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error training the image classifier model: {e}",
-        )
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=500,
+#             detail=f"Error training the image classifier model: {e}",
+#         )
 
-@app.post("/train_model_turi/{dsid}")
-async def train_model_turi(dsid: int, model_type: int = 1):
-    """
-    Trigger the training of the machine learning model asynchronously with Celery
-    """
-    # convert data over to a scalable dataframe
-    datapoints = await app.collection.find({"dsid": dsid}).to_list(length=None)
-    if len(datapoints) < 2:
-        raise HTTPException(status_code=404, detail=f"DSID {dsid} has {len(datapoints)} datapoints.",
-        ) 
-    task = train_model_task.delay(dsid, datapoints, model_type)
-    return {"task_id": task.id, "status": "training started"}
+# @app.post("/train_model_turi/{dsid}")
+# async def train_model_turi(dsid: int, model_type: int = 1):
+#     """
+#     Trigger the training of the machine learning model asynchronously with Celery
+#     """
+#     # convert data over to a scalable dataframe
+#     datapoints = await app.collection.find({"dsid": dsid}).to_list(length=None)
+#     if len(datapoints) < 2:
+#         raise HTTPException(status_code=404, detail=f"DSID {dsid} has {len(datapoints)} datapoints.",
+#         ) 
+#     task = train_model_task.delay(dsid, datapoints, model_type)
+#     return {"task_id": task.id, "status": "training started"}
 
-# Celery Tasks Train Status
-@app.get("train_status/{task_id}")
-async def train_status(task_id: str):
-    task_result = AsyncResult(task_id, app = celery_app)
-    if task_result.state == "PENDING":
-        return {"status": "Task is pending"}
-    elif task_result.statet == "SUCCESS":
-        return {"status": "Task completed", "model_path": task_result.result}
-    elif task_result.state == "FAILURE":
-        return {"status": "Task failed", "error": str(task_result.result)}
-    return {"status": task_result.state}
+# # Celery Tasks Train Status
+# @app.get("train_status/{task_id}")
+# async def train_status(task_id: str):
+#     task_result = AsyncResult(task_id, app = celery_app)
+#     if task_result.state == "PENDING":
+#         return {"status": "Task is pending"}
+#     elif task_result.statet == "SUCCESS":
+#         return {"status": "Task completed", "model_path": task_result.result}
+#     elif task_result.state == "FAILURE":
+#         return {"status": "Task failed", "error": str(task_result.result)}
+#     return {"status": task_result.state}
 
-# PREDICTION NEEDS REWORKED
+# # PREDICTION NEEDS REWORKED
 
-@celery_app.task
-def predict_image_task(dsid: int, image_bytes: bytes, model_type: int = 1):
-    try:
+# @celery_app.task
+# def predict_image_task(dsid: int, image_bytes: bytes, model_type: int = 1):
+#     try:
         
-        temp_filename = f"/tmp/{file.filename}"
-        with open(temp_filename, "wb") as temp_file:
-            temp_file.write(image_bytes)
-        turi_image = tc.Image(temp_filename)
-        data = tc.SFrame({"image": [turi_image]})
+#         temp_filename = f"/tmp/{file.filename}"
+#         with open(temp_filename, "wb") as temp_file:
+#             temp_file.write(image_bytes)
+#         turi_image = tc.Image(temp_filename)
+#         data = tc.SFrame({"image": [turi_image]})
         
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error processing image data: {e}")
+#     except Exception as e:
+#         raise HTTPException(status_code=400, detail=f"Error processing image data: {e}")
 
-    # Validate model type
-    model_map = {
-        1: "resnet-50",
-        2: "squeezenet_v1.1"
-    }
+#     # Validate model type
+#     model_map = {
+#         1: "resnet-50",
+#         2: "squeezenet_v1.1"
+#     }
 
-    if model_type not in model_map:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid model type: {model_type}. Use 1 for 'resnet-50' or 2 for 'squeezenet_v1.1'."
-        )
+#     if model_type not in model_map:
+#         raise HTTPException(
+#             status_code=400,
+#             detail=f"Invalid model type: {model_type}. Use 1 for 'resnet-50' or 2 for 'squeezenet_v1.1'."
+#         )
 
-    # Define a model key based on DSID and model type
-    model_key = (dsid, model_type)
+#     # Define a model key based on DSID and model type
+#     model_key = (dsid, model_type)
 
- # Load the model if it's not already in memory
-    if model_key not in app.clf:
-        try:
-             # Attempt to load the model from a saved file
-            model_path = f"../Team_Awesome_tornado/models/turi_image_model_dsid{dsid}_{model_type}"
+#  # Load the model if it's not already in memory
+#     if model_key not in app.clf:
+#         try:
+#              # Attempt to load the model from a saved file
+#             model_path = f"../Team_Awesome_tornado/models/turi_image_model_dsid{dsid}_{model_type}"
 
-            if not os.path.exists(model_path):
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Model file {model_path} does not exist. Please train the model first."
-                )
+#             if not os.path.exists(model_path):
+#                 raise HTTPException(
+#                     status_code=404,
+#                     detail=f"Model file {model_path} does not exist. Please train the model first."
+#                 )
 
-            app.clf[model_key] = tc.load_model(model_path)
+#             app.clf[model_key] = tc.load_model(model_path)
 
-        except FileNotFoundError:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Model for DSID {dsid} and type '{model_map[model_type]}' not found. Please train the model first."
-            )
+#         except FileNotFoundError:
+#             raise HTTPException(
+#                 status_code=404,
+#                 detail=f"Model for DSID {dsid} and type '{model_map[model_type]}' not found. Please train the model first."
+#             )
 
- # Perform prediction using the model
-    try:
-        pred_label = app.clf[model_key].predict(data)
-        return {
-            "prediction": str(pred_label[0]),
-            "model_type": model_map[model_type]
-        }  # Return the first prediction and model type
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Prediction error using model type '{model_map[model_type]}': {e}"
-        )
+#  # Perform prediction using the model
+#     try:
+#         pred_label = app.clf[model_key].predict(data)
+#         return {
+#             "prediction": str(pred_label[0]),
+#             "model_type": model_map[model_type]
+#         }  # Return the first prediction and model type
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=500,
+#             detail=f"Prediction error using model type '{model_map[model_type]}': {e}"
+#         )
   
-@app.post(
-    "/celery_predict_turi/",
-    response_description="Predict Label from Image",
-)
-async def predict_image_turi(file: UploadFile = File(...),dsid: int = 0, model_type: int = 1):
+# @app.post(
+#     "/celery_predict_turi/",
+#     response_description="Predict Label from Image",
+# )
+# async def predict_image_turi(file: UploadFile = File(...),dsid: int = 0, model_type: int = 1):
     
-    """
-    Post an image and get the label back.
-    """
+#     """
+#     Post an image and get the label back.
+#     """
 
-    # Read the image file as bytes
-    image_bytes = await file.read()
-    task = predict_image_task.delay(dsid, image_bytes, model_type)
-    return {"task_id": task.id, "status": "Prediction started"}
+#     # Read the image file as bytes
+#     image_bytes = await file.read()
+#     task = predict_image_task.delay(dsid, image_bytes, model_type)
+#     return {"task_id": task.id, "status": "Prediction started"}
 
-## Celery Tasks
-@app.get("/celery_predict_status/{task_id}")
-async def predict_status(task_id: str):
-    task_result = AsyncResult(task_id, app=celery_app)
-    if task_result.state == "PENDING":
-        return {"status": "Task is pending"}
-    elif task_result.statet == "SUCCESS":
-        return {"status": "Task completed", "prediction": task_result.result}
-    elif task_result.state == "FAILURE":
-        return {"status": "Task failed", "error": str(task_result.result)}
-    return {"status": task_result.state}
+# ## Celery Tasks
+# @app.get("/celery_predict_status/{task_id}")
+# async def predict_status(task_id: str):
+#     task_result = AsyncResult(task_id, app=celery_app)
+#     if task_result.state == "PENDING":
+#         return {"status": "Task is pending"}
+#     elif task_result.statet == "SUCCESS":
+#         return {"status": "Task completed", "prediction": task_result.result}
+#     elif task_result.state == "FAILURE":
+#         return {"status": "Task failed", "error": str(task_result.result)}
+#     return {"status": task_result.state}
 
-#===========================================
-#   Additional Methods
-#-------------------------------------------
+# #===========================================
+# #   Additional Methods
+# #-------------------------------------------
 
-# Count the number of images by DSID
-@app.get(
-    "/count_images/",
-    response_description="Get the total number of images stored",
-)
-async def count_images(dsid: int):
-    """
-    Count the total number of images stored in the database, optionally filtered by `dsid`.
-    """
-    query = {"dsid": dsid} if dsid is not None else {}
-    count = await app.collection.count_documents(query)
-    return {"total_images": count}
+# # Count the number of images by DSID
+# @app.get(
+#     "/count_images/",
+#     response_description="Get the total number of images stored",
+# )
+# async def count_images(dsid: int):
+#     """
+#     Count the total number of images stored in the database, optionally filtered by `dsid`.
+#     """
+#     query = {"dsid": dsid} if dsid is not None else {}
+#     count = await app.collection.count_documents(query)
+#     return {"total_images": count}
 
-@app.get(
-    "/max_dsid/",
-    response_description="Get current maximum dsid in data",
-    response_model_by_alias=False,
-)
-async def show_max_dsid():
-    """
-    Get the maximum dsid currently used 
-    """
+# @app.get(
+#     "/max_dsid/",
+#     response_description="Get current maximum dsid in data",
+#     response_model_by_alias=False,
+# )
+# async def show_max_dsid():
+#     """
+#     Get the maximum dsid currently used 
+#     """
 
-    if (
-        datapoint := await app.collection.find_one(sort=[("dsid", -1)])
-    ) is not None:
-        return {"dsid":datapoint["dsid"]}
+#     if (
+#         datapoint := await app.collection.find_one(sort=[("dsid", -1)])
+#     ) is not None:
+#         return {"dsid":datapoint["dsid"]}
 
-    raise HTTPException(status_code=404, detail=f"No datasets currently created.")
+#     raise HTTPException(status_code=404, detail=f"No datasets currently created.")
